@@ -1,0 +1,40 @@
+TARTUP SEQUENCE
+1. Make SET EPOCH CurrentServerTimestamp NX (In seconds)
+2. If return is nil then make GET EPOCH and cache local
+
+WRITE SEQUENCE
+1. Arrange Data into partitions <TagName>-<PartitionStart> 
+2. Each partition should have MEMBER which is value appended with CurrentServerTimestamp & SCORE which is relative to partition start.
+3. Make a bulk ZADD Redis command
+4. Make a ZADD command with KEY as TagName SCORE as PartitionStart and MEMBER as <TagName>-<PartitionStart> (This is Index for Read)
+5. Make a ZADD command with "RecentActivity" KEY and MEMBER as partitionName and SCORE as EPOCH-CurrentServerTimestamp(This is so that we have SCORE within numerical limit of long)(This is for Oldest partition updated)
+
+READ SEQUENCE
+1. For each tagname  convert StartTime to StartPartitionTime with the same PartitionStart formulae.
+2. Make ZRANGEBYSCORE command with Tagname StartPartitionTime & EndTime
+3. This should return all the partitions needed to be scanned.
+4. Use ZRANGEBYSCORE on each of them to collect the results.
+5. Adjust for Update scenario with CurrentServerTimestamp
+
+UPDATE SEQUENCE
+Same as the write sequence, This will add a duplicate score in the partition which can identified by taking latest CurrentServerTimestamp from MEMBER.
+
+DELETE SEQUENCE
+??? Maybe add a DELETED as payload just as update ???
+
+--------------------------------------------------------------------------------------------------------------------------
+ENQUEUEPURGE SEQUENCE  (background thread timed every hour)
+Should be in a transaction redis script.
+1. Make ZRANGE  RecentActivity -1 -1 WITHSCORES
+2. Add SCORE with EPOCH
+3. Subtract it with Current Timestamp and see if its > DeadThreshold time.
+4. If yes then read all from the sorted set  Make XADD Purge * FIELD as Keyname & STRING as serialized entries. 
+
+PURGEACK SEQUENCE (input will be the id for stream)
+Should be in a transaction redis script.
+1. XRANGE purge ID ID deserialize entries & make ZREM Field entries
+2. Make !EXISTS Field then ZREM Tag Field (Index Entries) & ZREM RecentActivity
+3. XACK ID
+4. XDEL ID
+--------------------------------------------------------------------------------------------------------------------------
+Need to have Tag name and tagname partition name.
