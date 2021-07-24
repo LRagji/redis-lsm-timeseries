@@ -1,0 +1,25 @@
+{
+  "name": "redislsmts",
+  "version": "0.0.1",
+  "description": "LSM on Redis for Timeseries DB",
+  "main": "index.js",
+  "scripts": {
+    "test": "test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LRagji/RedisLSMTS.git"
+  },
+  "keywords": [
+    "Timeseries",
+    "LSM",
+    "Redis",
+    "Laukik"
+  ],
+  "author": "Laukik",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/LRagji/RedisLSMTS/issues"
+  },
+  "homepage": "https://github.com/LRagji/RedisLSMTS#readme"
+}
