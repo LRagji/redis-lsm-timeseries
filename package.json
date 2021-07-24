@@ -1,5 +1,5 @@
 {
-  "name": "redislsmts",
+  "name": "redis-lsm-timeseries",
   "version": "0.0.1",
   "description": "LSM on Redis for Timeseries DB",
   "main": "index.js",
