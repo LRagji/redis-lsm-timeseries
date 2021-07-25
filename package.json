@@ -4,11 +4,15 @@
   "description": "LSM on Redis for Timeseries DB",
   "main": "index.js",
   "scripts": {
-    "test": "test"
+    "mocha": " nyc --reporter=html --reporter=text mocha",
+    "test": "npm run redisstart && npm run mocha && npm run redisstop && npm run redisstart && env REDISCLIENT=1 npm run mocha && npm run redisstop",
+    "redisstop": "docker stop streamz",
+    "redisstart": "npm run redisstop || node -v && docker run --name streamz -p 6379:6379 -itd --rm redis:latest",
+    "rediscli": "docker exec -it streamz redis-cli"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LRagji/RedisLSMTS.git"
+    "url": "git+https://github.com/LRagji/redis-lsm-timeseries.git"
   },
   "keywords": [
     "Timeseries",
@@ -17,9 +21,18 @@
     "Laukik"
   ],
   "author": "Laukik",
-  "license": "ISC",
+  "license": "SEE LICENSE IN license.md",
   "bugs": {
-    "url": "https://github.com/LRagji/RedisLSMTS/issues"
+    "url": "https://github.com/LRagji/redis-lsm-timeseries/issues"
   },
-  "homepage": "https://github.com/LRagji/RedisLSMTS#readme"
+  "homepage": "https://github.com/LRagji/redis-lsm-timeseries#readme",
+  "dependencies": {
+    "redis-scripto": "^0.1.3"
+  },
+  "devDependencies": {
+    "ioredis": "^4.27.6",
+    "mocha": "^9.0.2",
+    "nyc": "^15.1.0",
+    "redis": "^3.1.2"
+  }
 }
