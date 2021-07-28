@@ -6,7 +6,7 @@ WRITE SEQUENCE
 1. Arrange Data into partitions <TagName>-<PartitionStart> 
 2. Each partition should have MEMBER which is value appended with CurrentServerTimestamp & SCORE which is relative to partition start.
 3. Make a bulk ZADD Redis command
-4. Make a ZADD command with KEY as TagName SCORE as PartitionStart and MEMBER as <TagName>-<PartitionStart> (This is Index for Read)
+4. Make a ZADD command with KEY as TagName SCORE as (EPOCH-PartitionStart) and MEMBER as <TagName>-<PartitionStart> (This is Index for Read)
 5. Make a ZADD command with "RecentActivity" KEY and MEMBER as partitionName and SCORE as EPOCH-CurrentServerTimestamp(This is so that we have SCORE within numerical limit of long)(This is for Oldest partition updated)
 
 READ SEQUENCE
