@@ -1,6 +1,8 @@
 const Scripto = require("redis-scripto");
+const Crypto = require("crypto");
 const shortid = require("shortid");
 const path = require("path");
+
 
 //Domain constants
 const EPOCHKey = "EPOCH";
@@ -8,7 +10,6 @@ const SetOptionDonotOverwrite = "NX";
 const DecimalRadix = 10;
 const Seperator = "-";
 const safeMaxItemLimit = 2000;
-const PartitionWidth = 86400000n;
 const RecentAcitivityKey = "RecentActivity";
 
 class SortedStore {
@@ -22,12 +23,15 @@ class SortedStore {
         this.initialize = this.initialize.bind(this);
         this.write = this.write.bind(this);
         this._validateTransformParameters = this._validateTransformParameters.bind(this);
-
+        this._settingsHash = this._settingsHash.bind(this);
+        this._assembleKey = this._assembleKey.bind(this);
     }
 
-    async initialize() {
-        await this._redisClient.set(EPOCHKey, Date.now().toString(DecimalRadix), SetOptionDonotOverwrite);
-        this._epoch = await this._redisClient.get(EPOCHKey);
+    async initialize(orderedPartitionWidth = 86400000n) {
+        this._orderedPartitionWidth = BigInt(orderedPartitionWidth);
+        this.SettingsHash = this._settingsHash({ "version": 1.0, "partitionWidth": this._orderedPartitionWidth.toString() });
+        await this._redisClient.set(this._assembleKey(EPOCHKey), Date.now().toString(DecimalRadix), SetOptionDonotOverwrite);
+        this._epoch = await this._redisClient.get(this._assembleKey(EPOCHKey));
         this._epoch = parseInt(this._epoch, DecimalRadix);
         if (Number.isNaN(this._epoch)) {
             this._epoch = undefined;
@@ -38,7 +42,6 @@ class SortedStore {
             this._epoch = BigInt(this._epoch);
             return Promise.resolve(this._epoch);
         }
-        //TODO:Settings like Partition width etc can cause problem in multiinstance enviroment one possible option is to isolate new settings with different space to play in with hashing settings and prefixing keys 
     }
 
     async write(keyValuePairs) {
@@ -55,9 +58,9 @@ class SortedStore {
 
         let asyncCommands = [];
         transformed.payload.forEach((partition, partitionName) => {
-            asyncCommands.push(this._redisClient.zadd(partitionName, ...partition.data));//Main partition table update.
-            asyncCommands.push(this._redisClient.zadd(partition.partitionKey, partition.relativePartitionStart, partitionName));//Indexing updating.
-            asyncCommands.push(this._redisClient.zadd(RecentAcitivityKey, partition.relativeActivity, partitionName));//Recent activity
+            asyncCommands.push(this._redisClient.zadd(this._assembleKey(partitionName), ...partition.data));//Main partition table update.
+            asyncCommands.push(this._redisClient.zadd(this._assembleKey(partition.partitionKey), partition.relativePartitionStart, partitionName));//Indexing updating.
+            asyncCommands.push(this._redisClient.zadd(this._assembleKey(RecentAcitivityKey), partition.relativeActivity, partitionName));//Recent activity
         });
 
         await Promise.allSettled(asyncCommands);
@@ -87,7 +90,7 @@ class SortedStore {
                         return returnObject;
                     }
                     sortKey = BigInt(sortKey);
-                    const partitionStart = sortKey - (sortKey % PartitionWidth);
+                    const partitionStart = sortKey - (sortKey % this._orderedPartitionWidth);
                     const partitionName = `${partitionKey}${Seperator}${partitionStart}`;
                     const serializedItem = JSON.stringify({ 'p': item, 'u': `${sampleIngestionTime}-${this._instanceIdentifier}-${itemCounter}` });
                     const relativeKeyFromPartitionStart = sortKey - partitionStart;
@@ -113,6 +116,14 @@ class SortedStore {
         }
 
         return returnObject;
+    }
+
+    _settingsHash(settings) {
+        return Crypto.createHash("sha256").update(JSON.stringify(settings), "binary").digest("base64");
+    }
+
+    _assembleKey(key) {
+        return `${this.SettingsHash}${Seperator}${key}`;
     }
 
 
