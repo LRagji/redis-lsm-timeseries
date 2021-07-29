@@ -82,18 +82,18 @@ describe('Timeseries consumer tests', function () {
     it('Should write correct data when presented', async function () {
 
         //SETUP
-        const partitionWidth = 86400000;
+        const partitionWidth = 10;
         const recentActivityKey = "RecentActivity";
         const Seperator = "-";
-        const EPOCH = parseInt(await target.initialize());
+        const EPOCH = parseInt(await target.initialize(partitionWidth));
         let orderedData = new Map();
         let startDate = Date.now();
-        for (let orderCounter = 0; orderCounter < 2000; orderCounter++) {
+        for (let orderCounter = 0; orderCounter < 200; orderCounter++) {
             orderedData.set((startDate + orderCounter), orderCounter.toString());
         }
         let inputData = new Map();
-        for (let partitionCounter = 0; partitionCounter < 1; partitionCounter++) {
-            inputData.set(`Tag-${partitionCounter}`, orderedData);
+        for (let partitionCounter = 0; partitionCounter < 10; partitionCounter++) {
+            inputData.set(`TagDCJf38X0DrgIZNCgyp4+RZC0rkoLtvaUokoj7cKTE7MSomethings-${partitionCounter}`, orderedData);
         }
 
         //EXECUTE
