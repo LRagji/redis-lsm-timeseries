@@ -7,7 +7,7 @@ const EPOCHKey = "EPOCH";
 const SetOptionDonotOverwrite = "NX";
 const DecimalRadix = 10;
 const Seperator = "-";
-const safeMaxItemLimit = 200000;
+const safeMaxItemLimit = 2000;
 const PartitionWidth = 86400000n;
 const RecentAcitivityKey = "RecentActivity";
 

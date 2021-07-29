@@ -42,7 +42,7 @@ describe('Timeseries consumer tests', function () {
 
     });
 
-    it('Should not allow write when either of the validations is failling', async function () {
+    it('Should not allow write when input parameter is not a map', async function () {
 
         //SETUP
         await target.initialize();
@@ -51,11 +51,14 @@ describe('Timeseries consumer tests', function () {
         await assert.rejects(() => target.write([]), err => assert.strictEqual(err, "Parameter 'keyValuePairs' should be of type 'Map' instead of object") == undefined);
 
         await assert.rejects(() => target.write(new Map([["Tag", []]])), err => assert.strictEqual(err, `Parameter 'keyValuePairs' has multiple Errors: Key "Tag" has element which is not of type "Map".`) == undefined);
+    });
 
+    it('Should not allow write when input doesnot contain single item', async function () {
+        //VERIFY
         await assert.rejects(() => target.write(new Map([["Empty", new Map()]])), err => assert.strictEqual(err, "Parameter 'keyValuePairs' should contain atleast one item to insert.") == undefined);
     });
 
-    it('Should not allow write when samples are more than 2 lacs', async function () {
+    it('Should not allow write when samples are more than 2000 samples', async function () {
 
         //SETUP
         await target.initialize();
@@ -70,7 +73,7 @@ describe('Timeseries consumer tests', function () {
         }
 
         //VERIFY
-        await assert.rejects(() => target.write(inputData), err => assert.strictEqual(err, "Sample size exceeded limit of 200000.") == undefined);
+        await assert.rejects(() => target.write(inputData), err => assert.strictEqual(err, "Sample size exceeded limit of 2000.") == undefined);
 
     });
 
@@ -83,11 +86,11 @@ describe('Timeseries consumer tests', function () {
         const EPOCH = parseInt(await target.initialize());
         let orderedData = new Map();
         let startDate = Date.now();
-        for (let orderCounter = 0; orderCounter < 10; orderCounter++) {
+        for (let orderCounter = 0; orderCounter < 2000; orderCounter++) {
             orderedData.set((startDate + orderCounter), orderCounter.toString());
         }
         let inputData = new Map();
-        for (let partitionCounter = 0; partitionCounter < 10; partitionCounter++) {
+        for (let partitionCounter = 0; partitionCounter < 1; partitionCounter++) {
             inputData.set(`Tag-${partitionCounter}`, orderedData);
         }
 
@@ -126,5 +129,5 @@ describe('Timeseries consumer tests', function () {
             };
         }
 
-    }).timeout(-1);
+    });
 });
