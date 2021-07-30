@@ -10,7 +10,7 @@ WRITE SEQUENCE
 5. Make a ZADD command with "RecentActivity" KEY and MEMBER as partitionName and SCORE as EPOCH-CurrentServerTimestamp(This is so that we have SCORE within numerical limit of long)(This is for Oldest partition updated)
 
 READ SEQUENCE
-1. For each tagname  convert StartTime to StartPartitionTime with the same PartitionStart formulae.
+1. For each tagname convert StartTime to (EPOCH-StartPartitionTime) with the same PartitionStart formulae & EndTime=(EPOCH-EndTime).
 2. Make ZRANGEBYSCORE command with Tagname StartPartitionTime & EndTime
 3. This should return all the partitions needed to be scanned.
 4. Use ZRANGEBYSCORE on each of them to collect the results.

@@ -10,7 +10,9 @@ const SetOptionDonotOverwrite = "NX";
 const DecimalRadix = 10;
 const Seperator = "-";
 const safeMaxItemLimit = 2000;
+const safeIndexedTagsRead = 100;
 const RecentAcitivityKey = "RecentActivity";
+const SafeKeyNameLength = 200;
 
 class SortedStore {
 
@@ -25,6 +27,7 @@ class SortedStore {
         this._validateTransformParameters = this._validateTransformParameters.bind(this);
         this._settingsHash = this._settingsHash.bind(this);
         this._assembleKey = this._assembleKey.bind(this);
+        this.readIndex = this.readIndex.bind(this);
     }
 
     async initialize(orderedPartitionWidth = 86400000n) {
@@ -58,6 +61,7 @@ class SortedStore {
 
         let asyncCommands = [];
         transformed.payload.forEach((partition, partitionName) => {
+            //TODO:Someday we can move this to MULTI-Redis Transaction, only promisying that call is tough across redis libraries.
             asyncCommands.push(this._redisClient.zadd(this._assembleKey(partitionName), ...partition.data));//Main partition table update.
             asyncCommands.push(this._redisClient.zadd(this._assembleKey(partition.partitionKey), partition.relativePartitionStart, partitionName));//Indexing updating.
             asyncCommands.push(this._redisClient.zadd(this._assembleKey(RecentAcitivityKey), partition.relativeActivity, partitionName));//Recent activity
@@ -82,6 +86,9 @@ class SortedStore {
         keyValuePairs.forEach((orderedMap, partitionKey) => {
             if (orderedMap instanceof Map === false) {
                 errors.push(`Key "${partitionKey}" has element which is not of type "Map".`);
+            }
+            else if (partitionKey.length > SafeKeyNameLength) {
+                errors.push(`Key "${partitionKey}" has name which extends character limit(${SafeKeyNameLength}).`);
             }
             else {
                 orderedMap.forEach((item, sortKey) => {
@@ -119,13 +126,85 @@ class SortedStore {
     }
 
     _settingsHash(settings) {
-        return Crypto.createHash("sha256").update(JSON.stringify(settings), "binary").digest("base64");
+        return Crypto.createHash("sha256").update(JSON.stringify(settings), "binary").digest("hex");
     }
 
     _assembleKey(key) {
         return `${this.SettingsHash}${Seperator}${key}`;
     }
 
+    async readIndex(partitionRanges) {
+
+        if (this._epoch == null) {
+            return Promise.reject("Please initialize the instance by calling 'initialize' first before any calls.");
+        }
+
+        if (partitionRanges instanceof Map === false) {
+            return Promise.reject(`Parameter 'partitionRanges' should be of type 'Map' instead of ${typeof (partitionRanges)}`);
+        }
+
+        if (partitionRanges.size > safeIndexedTagsRead) {
+            return Promise.reject(`Parameter 'partitionRanges' cannot have partitions more than ${safeIndexedTagsRead}.`);
+        }
+
+        const errors = [];
+        const ranges = new Map();
+        partitionRanges.forEach((range, partitionKey) => {
+            let start, end;
+            try {
+                start = BigInt(range.start);
+                start = start - (start % this._orderedPartitionWidth);
+                start = this._epoch - start;
+            }
+            catch (error) {
+                errors.push(`Invalid start range for ${partitionKey}: ${error.message}`);
+                return;
+            };
+            try {
+                end = BigInt(range.end);
+                end = this._epoch - end;
+            }
+            catch (error) {
+                errors.push(`Invalid end range for ${partitionKey}: ${error.message}`);
+                return;
+            };
+            if (partitionKey.length > SafeKeyNameLength) {
+                errors.push(`Key "${partitionKey}" has name which extends character limit(${SafeKeyNameLength}).`);
+                return;
+            }
+            if (range.end < range.start) {
+                errors.push(`Invalid range; start should be smaller than end for ${partitionKey}.`);
+                return;
+            }
+            ranges.set(partitionKey, { "rangeStart": start, "rangeEnd": end, "actualStart": range.start, "actualEnd": range.end });
+        });
+
+        if (ranges.size === 0 && errors.length == 0) {
+            return Promise.reject(`Parameter 'partitionRanges' should contain atleast one range for query.`);
+        }
+
+        if (errors.length > 0) {
+            return Promise.reject("Parameter 'partitionRanges' has multiple Errors: " + errors.join(' , '));
+        }
+
+        let asyncCommands = [];
+        ranges.forEach((range, partitionKey) => {
+            asyncCommands.push((async () => {
+                let entries = { "partitionKey": partitionKey, pages: [], "start": range.actualStart, "end": range.actualEnd };
+                const response = await this._redisClient.zrangebyscore(this._assembleKey(partitionKey), range.rangeEnd, range.rangeStart, "WITHSCORES");
+                for (let index = 0; index < response.length; index += 2) {
+                    entries.pages.push({ "page": response[index], "sortWeight": parseFloat(response[index + 1]) });
+                }
+                return entries;
+            })());
+        });
+        let pages = new Map();
+        let results = await Promise.allSettled(asyncCommands);
+        results.forEach((result) => {
+            pages.set(result.value.partitionKey, result.value.pages);
+        });
+        return Promise.resolve(pages);
+    }
 
 }
 
