@@ -549,6 +549,35 @@ describe('Timeseries consumer tests', function () {
 
     });
 
+    it('Should read correct updated data.', async function () {
+
+        //SETUP
+        const partitionWidth = 5;
+        let inputData = new Map();
+        let ranges = new Map();
+        let expected = new Map();
+
+        inputData.set("GapTag", new Map([[1, "One"], [1, "Two"], [1, "Ten"], [1, "Twenty"]]));
+        inputData.set("SerialTag", new Map([[55, "One"], [55, "Two"], [56, "Three"], [55, "Four"]]));
+
+        ranges.set("GapTag", { start: 0, end: 10 });
+        ranges.set("SerialTag", { start: 0, end: 100 });
+
+        expected.set("GapTag", new Map([[1, "Twenty"]]));
+        expected.set("SerialTag", new Map([[55, "Four"], [56, "Three"]]));
+
+        await target.initialize(partitionWidth);
+
+        //WRITE
+        await target.write(inputData);
+
+        //READ
+        const result = await readData(ranges);
+
+        //VERIFY
+        assert.deepStrictEqual(result, expected);
+    });
+
 });
 
 async function readData(ranges) {
