@@ -13,6 +13,7 @@ const safeMaxItemLimit = 2000;
 const safeIndexedTagsRead = 100;
 const RecentAcitivityKey = "RecentActivity";
 const SafeKeyNameLength = 200;
+const WITHSCORES = "WITHSCORES";
 
 class SortedStore {
 
@@ -28,6 +29,7 @@ class SortedStore {
         this._settingsHash = this._settingsHash.bind(this);
         this._assembleKey = this._assembleKey.bind(this);
         this.readIndex = this.readIndex.bind(this);
+        this.readPage = this.readPage.bind(this);
     }
 
     async initialize(orderedPartitionWidth = 86400000n) {
@@ -67,7 +69,12 @@ class SortedStore {
             asyncCommands.push(this._redisClient.zadd(this._assembleKey(RecentAcitivityKey), partition.relativeActivity, partitionName));//Recent activity
         });
 
-        await Promise.allSettled(asyncCommands);
+        let results = await Promise.allSettled(asyncCommands);
+        results.forEach(e => {
+            if (e.status !== "fulfilled") {
+                throw new Error("Failed to complete operation:" + e.reason);
+            }
+        });
 
         return Promise.resolve(true);
     }
@@ -190,10 +197,10 @@ class SortedStore {
         let asyncCommands = [];
         ranges.forEach((range, partitionKey) => {
             asyncCommands.push((async () => {
-                let entries = { "partitionKey": partitionKey, pages: [], "start": range.actualStart, "end": range.actualEnd };
-                const response = await this._redisClient.zrangebyscore(this._assembleKey(partitionKey), range.rangeEnd, range.rangeStart, "WITHSCORES");
+                let entries = { "partitionKey": partitionKey, pages: [] };
+                const response = await this._redisClient.zrangebyscore(this._assembleKey(partitionKey), range.rangeEnd, range.rangeStart, WITHSCORES);
                 for (let index = 0; index < response.length; index += 2) {
-                    entries.pages.push({ "page": response[index], "sortWeight": parseFloat(response[index + 1]) });
+                    entries.pages.push({ "page": response[index], "sortWeight": parseFloat(response[index + 1]), "start": range.actualStart, "end": range.actualEnd });
                 }
                 return entries;
             })());
@@ -201,11 +208,58 @@ class SortedStore {
         let pages = new Map();
         let results = await Promise.allSettled(asyncCommands);
         results.forEach((result) => {
+            if (result.status !== "fulfilled") {
+                throw new Error("Failed to complete operation:" + result.reason);
+            }
             pages.set(result.value.partitionKey, result.value.pages);
         });
         return Promise.resolve(pages);
     }
 
+    async readPage(pagename, start, end) {
+        let partitionStart;
+        if (this._epoch == null) {
+            return Promise.reject("Please initialize the instance by calling 'initialize' first before any calls.");
+        }
+
+        if (pagename == undefined || pagename.length == 0 || pagename.length > (SafeKeyNameLength * 2)) {
+            return Promise.reject(`Parameter "pagename" should be a valid string with characters not exceeding ${SafeKeyNameLength * 2}.`);
+        }
+        try {
+            const seperatorIndex = pagename.lastIndexOf(Seperator);
+            if (seperatorIndex < 0 || (seperatorIndex + 1) >= pagename.length) {
+                throw new Error("Seperator misplaced @" + seperatorIndex);
+            }
+            partitionStart = BigInt(pagename.substring(seperatorIndex + 1));
+        }
+        catch (error) {
+            return Promise.reject(`Invalid 'pagename': ${error.message}`);
+        };
+        try {
+            start = BigInt(start);
+        }
+        catch (error) {
+            return Promise.reject(`Invalid start range for ${pagename}: ${error.message}`);
+        };
+        try {
+            end = BigInt(end);
+        }
+        catch (error) {
+            return Promise.reject(`Invalid end range for ${pagename}: ${error.message}`);
+        };
+
+        let returnMap = new Map();
+        const response = await this._redisClient.zrange(this._assembleKey(pagename), 0, -1, WITHSCORES);
+        for (let index = 0; index < response.length; index += 2) {
+            const sortKey = partitionStart + BigInt(response[index + 1]);
+            if (start <= sortKey && sortKey <= end) {
+                const item = JSON.parse(response[index]).p;
+                returnMap.set(Number(sortKey), item);
+            }
+        }
+
+        return Promise.resolve(returnMap);
+    }
 }
 
 

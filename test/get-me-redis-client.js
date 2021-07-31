@@ -26,6 +26,7 @@ module.exports = (redisConnectionString) => {
             redisClient.zadd = promisify(myFavClient.zadd).bind(myFavClient);
             redisClient.zrangebyscore = promisify(myFavClient.zrangebyscore).bind(myFavClient);
             redisClient.zrank = promisify(myFavClient.zrank).bind(myFavClient);
+            redisClient.zrange = promisify(myFavClient.zrange).bind(myFavClient);
             break;
         default:
             console.log("Defaulting to ioredis as redis client Enviroment: " + process.env.REDISCLIENT)

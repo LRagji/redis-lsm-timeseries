@@ -14,7 +14,6 @@ describe('Timeseries consumer tests', function () {
     });
 
     this.afterEach(async function () {
-        await redisClient.flushall();
         await redisClient.quit();
         redisClient = null;
     });
@@ -340,4 +339,243 @@ describe('Timeseries consumer tests', function () {
         //VERIFY
         await assert.rejects(() => target.readIndex(ranges), err => assert.strictEqual(err, 'Parameter \'partitionRanges\' has multiple Errors: Key "ipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumloreipsumlorem:1234567890-0" has name which extends character limit(200).') == undefined);
     });
+
+    it('Should read correct data for gaps and sequential data when bigger read range is provided', async function () {
+
+        //SETUP
+        const partitionWidth = 5;
+        let inputData = new Map();
+        let ranges = new Map();
+        let expected = new Map();
+
+        inputData.set("GapTag", new Map([[1, "One"], [2, "Two"], [10, "Ten"], [20, "Twenty"]]));
+        inputData.set("SerialTag", new Map([[1, "One"], [2, "Two"], [3, "Three"], [4, "Four"]]));
+
+        ranges.set("GapTag", { start: 0, end: 50 });
+        ranges.set("SerialTag", { start: 0, end: 50 });
+
+        expected = inputData;
+
+        await target.initialize(partitionWidth);
+
+        //WRITE
+        await target.write(inputData);
+
+        //READ
+        const result = await readData(ranges);
+
+        //VERIFY
+        assert.deepStrictEqual(result, expected);
+    });
+
+    it('Should read correct data for gaps and sequential data when read range is outside presented data', async function () {
+
+        //SETUP
+        const partitionWidth = 5;
+        let inputData = new Map();
+        let ranges = new Map();
+        let expected = new Map();
+
+        inputData.set("GapTag", new Map([[1, "One"], [2, "Two"], [10, "Ten"], [20, "Twenty"]]));
+        inputData.set("SerialTag", new Map([[1, "One"], [2, "Two"], [3, "Three"], [4, "Four"]]));
+
+        ranges.set("GapTag", { start: 50, end: 100 });
+        ranges.set("SerialTag", { start: 50, end: 50 });
+
+        await target.initialize(partitionWidth);
+
+        //WRITE
+        await target.write(inputData);
+
+        //READ
+        const result = await readData(ranges);
+
+        //VERIFY
+        assert.deepStrictEqual(result, expected);
+    });
+
+    it('Should read correct data for gaps and sequential data when read range is single data point', async function () {
+
+        //SETUP
+        const partitionWidth = 5;
+        let inputData = new Map();
+        let ranges = new Map();
+        let expected = new Map();
+
+        inputData.set("GapTag", new Map([[1, "One"], [2, "Two"], [10, "Ten"], [20, "Twenty"]]));
+        inputData.set("SerialTag", new Map([[1, "One"], [2, "Two"], [3, "Three"], [4, "Four"]]));
+
+        ranges.set("GapTag", { start: 1, end: 1 });
+        ranges.set("SerialTag", { start: 4, end: 4 });
+
+        expected.set("GapTag", new Map([[1, "One"]]));
+        expected.set("SerialTag", new Map([[4, "Four"]]));
+
+        await target.initialize(partitionWidth);
+
+        //WRITE
+        await target.write(inputData);
+
+        //READ
+        const result = await readData(ranges);
+
+        //VERIFY
+        assert.deepStrictEqual(result, expected);
+    });
+
+    it('Should read correct data for gaps and sequential data when read range is partially overlapping with data', async function () {
+
+        //SETUP
+        const partitionWidth = 5;
+        let inputData = new Map();
+        let ranges = new Map();
+        let expected = new Map();
+
+        inputData.set("GapTag", new Map([[1, "One"], [2, "Two"], [10, "Ten"], [20, "Twenty"]]));
+        inputData.set("SerialTag", new Map([[1, "One"], [2, "Two"], [3, "Three"], [4, "Four"]]));
+
+        ranges.set("GapTag", { start: 0, end: 1 });
+        ranges.set("SerialTag", { start: 4, end: 10 });
+
+        expected.set("GapTag", new Map([[1, "One"]]));
+        expected.set("SerialTag", new Map([[4, "Four"]]));
+
+        await target.initialize(partitionWidth);
+
+        //WRITE
+        await target.write(inputData);
+
+        //READ
+        const result = await readData(ranges);
+
+        //VERIFY
+        assert.deepStrictEqual(result, expected);
+    });
+
+    it('Should read correct data for gaps and sequential data when read range is subset of the data range', async function () {
+
+        //SETUP
+        const partitionWidth = 5;
+        let inputData = new Map();
+        let ranges = new Map();
+        let expected = new Map();
+
+        inputData.set("GapTag", new Map([[1, "One"], [2, "Two"], [10, "Ten"], [20, "Twenty"]]));
+        inputData.set("SerialTag", new Map([[1, "One"], [2, "Two"], [3, "Three"], [4, "Four"]]));
+
+        ranges.set("GapTag", { start: 2, end: 10 });
+        ranges.set("SerialTag", { start: 3, end: 4 });
+
+        expected.set("GapTag", new Map([[2, "Two"], [10, "Ten"]]));
+        expected.set("SerialTag", new Map([[3, "Three"], [4, "Four"]]));
+
+        await target.initialize(partitionWidth);
+
+        //WRITE
+        await target.write(inputData);
+
+        //READ
+        const result = await readData(ranges);
+
+        //VERIFY
+        assert.deepStrictEqual(result, expected);
+    });
+
+    it('Should read chunk of data when correct data when presented', async function () {
+
+        //SETUP
+        const partitionWidth = 10;
+        await target.initialize(partitionWidth)
+        let orderedData = new Map();
+        let startDate = Date.now();
+        for (let orderCounter = 0; orderCounter < 200; orderCounter++) {
+            orderedData.set((startDate + orderCounter), orderCounter.toString());
+        }
+        let inputData = new Map();
+        let ranges = new Map();
+        for (let partitionCounter = 0; partitionCounter < 10; partitionCounter++) {
+            inputData.set(`TagDCJf38X0DrgIZNCgyp4+RZC0rkoLtvaUokoj7cKTE7MSomethings-${partitionCounter}`, orderedData);
+            ranges.set(`TagDCJf38X0DrgIZNCgyp4+RZC0rkoLtvaUokoj7cKTE7MSomethings-${partitionCounter}`, { start: startDate, end: (startDate * 2) });
+        }
+
+        //EXECUTE
+        const returnValue = await target.write(inputData);
+
+        //READ
+        const result = await readData(ranges);
+
+        //VERIFY
+        assert.deepStrictEqual(result, inputData);
+
+    });
+
+    it('Should not allow readPage when not initialized', async function () {
+
+        //VERIFY
+        await assert.rejects(() => target.readPage("", 0, 0), err => assert.strictEqual(err, "Please initialize the instance by calling 'initialize' first before any calls.") == undefined);
+
+    });
+
+    it('Should not allow readPage when incorrect page info is passed', async function () {
+        //SETUP
+        await target.initialize();
+
+        //VERIFY when pagename is empty string
+        await assert.rejects(() => target.readPage("", 0, 0), err => assert.strictEqual(err, `Parameter "pagename" should be a valid string with characters not exceeding 400.`) == undefined);
+
+        //VERIFY when pagename doesnt has seperator
+        await assert.rejects(() => target.readPage("Laukik", 0, 0), err => assert.strictEqual(err, `Invalid 'pagename': Seperator misplaced @-1`) == undefined);
+
+        //VERIFY when pagename has seperator towards end
+        await assert.rejects(() => target.readPage("Laukik-", 0, 0), err => assert.strictEqual(err, `Invalid 'pagename': Seperator misplaced @6`) == undefined);
+
+    });
+
+    it('Should not allow readPage when incorrect range is specified', async function () {
+        //SETUP
+        await target.initialize();
+
+        //VERIFY when start is null
+        await assert.rejects(() => target.readPage("Laukik-9", null, 0), err => assert.strictEqual(err, `Invalid start range for Laukik-9: Cannot convert null to a BigInt`) == undefined);
+
+        //VERIFY when end is null
+        await assert.rejects(() => target.readPage("Laukik-8", 0, null), err => assert.strictEqual(err, `Invalid end range for Laukik-8: Cannot convert null to a BigInt`) == undefined);
+
+        //VERIFY when it is text
+        await assert.rejects(() => target.readPage("Laukik-9", "laukkik", 0), err => assert.strictEqual(err, `Invalid start range for Laukik-9: Cannot convert laukkik to a BigInt`) == undefined);
+
+        //VERIFY when it is float
+        await assert.rejects(() => target.readPage("Laukik-9", 0.3, 0), err => assert.strictEqual(err, `Invalid start range for Laukik-9: The number 0.3 cannot be converted to a BigInt because it is not an integer`) == undefined);
+
+    });
+
 });
+
+async function readData(ranges) {
+    //READ Indexes
+    const pages = await target.readIndex(ranges);
+
+    //READ Pages
+    let asyncCommands = [];
+    pages.forEach((pages, partitionName) => {
+        pages.forEach((page) => {
+            asyncCommands.push((async () => {
+                const sortedMap = await target.readPage(page.page, page.start, page.end);
+                return new Map([[partitionName, sortedMap]]);
+            })());
+        });
+    });
+    let queryResults = await Promise.allSettled(asyncCommands);
+    const result = new Map();
+    queryResults.reverse().forEach((e) => {
+        if (e.status !== "fulfilled") {
+            throw new Error(e.reason);
+        }
+        e = e.value;
+        const partitionName = Array.from(e.keys())[0];
+        const existingData = result.get(partitionName) || new Map();
+        e.get(partitionName).forEach((v, k) => existingData.set(k, v));
+        result.set(partitionName, existingData);
+    });
+    return result;
+}
