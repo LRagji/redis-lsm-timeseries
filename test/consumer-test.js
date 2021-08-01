@@ -31,7 +31,7 @@ describe('Timeseries consumer tests', function () {
     it('Should fail with initialization exception when EPOCH is set to invalid', async function () {
 
         //SETUP
-        let hash = Crypto.createHash("sha256").update(JSON.stringify({ "version": 1.0, "partitionWidth": 86400000n.toString() }), "binary").digest("hex")
+        let hash = Crypto.createHash("sha256").update(JSON.stringify({ "version": 1.0, "partitionWidth": 86400000n.toString(), "purgeQueName": 'Purge' }), "binary").digest("hex")
         await redisClient.set(hash + "-EPOCH", "Laukik");//This is to simulate key is set but not epoch i.e:Timestamp ;
 
         //VERIFY
@@ -120,10 +120,10 @@ describe('Timeseries consumer tests', function () {
         }
 
         //EXECUTE
-        const returnValue = await target.write(inputData);
+        const serverMemoryBytes = await target.write(inputData);
 
         //VERIFY
-        assert.strictEqual(true, returnValue);
+        assert.strictEqual(true, serverMemoryBytes > 0n);
         let tags = Array.from(inputData.keys());
         for (let tagCounter = 0; tagCounter < tags.length; tagCounter++) {
             let samples = [];
@@ -576,6 +576,87 @@ describe('Timeseries consumer tests', function () {
 
         //VERIFY
         assert.deepStrictEqual(result, expected);
+    });
+
+    it('Should mark partition for purging when correct parameters are presented.', async function () {
+
+        //SETUP
+        const partitionWidth = 5;
+        let inputData = new Map();
+        let qName = "Purge";
+        const Seperator = '-';
+
+        inputData.set("GapTag", new Map([[1, "One"], [2, "Two"], [10, "Ten"], [20, "Twenty"]]));
+        inputData.set("SerialTag", new Map([[1, "One"], [2, "Two"], [3, "Three"], [4, "Four"]]));
+
+        await target.initialize(partitionWidth, qName);
+
+        //WRITE
+        const bytes = await target.write(inputData);
+
+        //PURGE
+        const markedPartitionsIds = await target.purgeScan(1, 10);
+
+        //VERIFY
+        assert.deepStrictEqual(bytes > 1n, true);
+        assert.deepStrictEqual(markedPartitionsIds.length === 4, true, `A:${markedPartitionsIds.length} E:${4}`);
+        const actual = new Map();
+        for (let index = 0; index < markedPartitionsIds.length; index++) {
+            let results = await redisClient.xrange(target._assembleKey(qName), markedPartitionsIds[index], markedPartitionsIds[index]);
+            const tagName = results[0][1][0].split(Seperator)[0];
+            let members = actual.get(tagName) || []
+            members.push(...((JSON.parse(results[0][1][1])).map(e => JSON.parse(e).p).filter(e => e != undefined)));
+            actual.set(tagName, members);
+        }
+        assert.deepStrictEqual(actual.get("GapTag"), ['One', 'Two', 'Ten', 'Twenty']);
+        assert.deepStrictEqual(actual.get("SerialTag"), ['One', 'Two', 'Three', 'Four']);
+    });
+
+    it('Should not allow to mark partition for purging when not initialized', async function () {
+
+        //VERIFY
+        await assert.rejects(() => target.purgeScan(), err => assert.strictEqual(err, "Please initialize the instance by calling 'initialize' first before any calls.") == undefined);
+
+    });
+
+    it('Should not allow to mark partition for purging when partitionAgeThreshold is not valid', async function () {
+
+        //SETUP
+        await target.initialize();
+
+        //VERIFY
+        await assert.rejects(() => target.purgeScan("ladsa"), err => assert.strictEqual(err, "Parameter 'partitionAgeThreshold' is invalid: Cannot convert ladsa to a BigInt") == undefined);
+
+    });
+
+    it('Should not allow to mark partition for purging when maxPartitionsToMark is not valid', async function () {
+
+        //SETUP
+        await target.initialize();
+
+        //VERIFY
+        await assert.rejects(() => target.purgeScan(0, "ladlf"), err => assert.strictEqual(err, "Parameter 'maxPartitionsToMark' is invalid: Cannot convert ladlf to a BigInt") == undefined);
+
+    });
+
+    it('Should not allow to mark partition for purging when partitionAgeThreshold is zero or less', async function () {
+
+        //SETUP
+        await target.initialize();
+
+        //VERIFY
+        await assert.rejects(() => target.purgeScan(0), err => assert.strictEqual(err, "Parameter 'partitionAgeThreshold' is invalid & should greater than 1.") == undefined);
+
+    });
+
+    it('Should not allow to mark partition for purging when maxPartitionsToMark is zero or less', async function () {
+
+        //SETUP
+        await target.initialize();
+
+        //VERIFY
+        await assert.rejects(() => target.purgeScan(undefined, 0), err => assert.strictEqual(err, "Parameter 'maxPartitionsToMark' is invalid & should greater than 1.") == undefined);
+
     });
 
 });

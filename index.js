@@ -14,13 +14,14 @@ const safeIndexedTagsRead = 100;
 const RecentAcitivityKey = "RecentActivity";
 const SafeKeyNameLength = 200;
 const WITHSCORES = "WITHSCORES";
+const scriptNameEnquePurge = "enqueue-purge";
 
 class SortedStore {
 
     constructor(redisClient, scriptManager = new Scripto(redisClient)) {
         this._scriptManager = scriptManager;
         this._redisClient = redisClient;
-        this._scriptManager.loadFromDir(path.join(__dirname, "scripts"));
+        this._scriptManager.loadFromDir(path.join(__dirname, "lua-scripts"));
 
         //local functions
         this.initialize = this.initialize.bind(this);
@@ -30,11 +31,13 @@ class SortedStore {
         this._assembleKey = this._assembleKey.bind(this);
         this.readIndex = this.readIndex.bind(this);
         this.readPage = this.readPage.bind(this);
+        this.purgeScan = this.purgeScan.bind(this);
     }
 
-    async initialize(orderedPartitionWidth = 86400000n) {
+    async initialize(orderedPartitionWidth = 86400000n, purgeQueName = "Purge") {
         this._orderedPartitionWidth = BigInt(orderedPartitionWidth);
-        this.SettingsHash = this._settingsHash({ "version": 1.0, "partitionWidth": this._orderedPartitionWidth.toString() });
+        this._purgeQueName = purgeQueName;
+        this.SettingsHash = this._settingsHash({ "version": 1.0, "partitionWidth": this._orderedPartitionWidth.toString(), "purgeQueName": purgeQueName });
         await this._redisClient.set(this._assembleKey(EPOCHKey), Date.now().toString(DecimalRadix), SetOptionDonotOverwrite);
         this._epoch = await this._redisClient.get(this._assembleKey(EPOCHKey));
         this._epoch = parseInt(this._epoch, DecimalRadix);
@@ -76,7 +79,9 @@ class SortedStore {
             }
         });
 
-        return Promise.resolve(true);
+        const info = await this._redisClient.info('Memory');
+        const serverMemory = BigInt(info.split('\r\n')[1].split(':')[1]);
+        return Promise.resolve(serverMemory);
     }
 
     _validateTransformParameters(keyValuePairs) {
@@ -218,6 +223,7 @@ class SortedStore {
 
     async readPage(pagename, start, end) {
         let partitionStart;
+
         if (this._epoch == null) {
             return Promise.reject("Please initialize the instance by calling 'initialize' first before any calls.");
         }
@@ -259,6 +265,42 @@ class SortedStore {
         }
 
         return Promise.resolve(returnMap);
+    }
+
+    async purgeScan(partitionAgeThreshold = 300, maxPartitionsToMark = 10) {
+
+        if (this._epoch == null) {
+            return Promise.reject("Please initialize the instance by calling 'initialize' first before any calls.");
+        }
+
+        try {
+            partitionAgeThreshold = BigInt(partitionAgeThreshold);
+        }
+        catch (err) {
+            return Promise.reject("Parameter 'partitionAgeThreshold' is invalid: " + err.message);
+        }
+        try {
+            maxPartitionsToMark = BigInt(maxPartitionsToMark);
+        }
+        catch (err) {
+            return Promise.reject("Parameter 'maxPartitionsToMark' is invalid: " + err.message);
+        }
+
+        if (partitionAgeThreshold <= 0) {
+            return Promise.reject("Parameter 'partitionAgeThreshold' is invalid & should greater than 1.")
+        }
+        if (maxPartitionsToMark <= 0) {
+            return Promise.reject("Parameter 'maxPartitionsToMark' is invalid & should greater than 1.")
+        }
+
+        return new Promise((acc, rej) => {
+            this._scriptManager.run(scriptNameEnquePurge, [this._assembleKey(RecentAcitivityKey), this._assembleKey(this._purgeQueName)], [partitionAgeThreshold, this._epoch, maxPartitionsToMark, (this.SettingsHash + Seperator)], (err, result) => {
+                if (err !== null) {
+                    return rej(err);
+                }
+                acc(result);
+            });
+        });
     }
 }
 

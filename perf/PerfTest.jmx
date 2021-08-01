@@ -122,12 +122,12 @@ vars.put(&quot;rb&quot;,JsonOutput.toJson(requestBody));</stringProp>
 Thread thread = Thread.currentThread();
 Date latestdate = new Date(); 
 def range = new HashMap&lt;String,Long&gt;();
-range.put(&quot;start&quot;, latestdate.getTime()-100); 
-range.put(&quot;end&quot;, latestdate.getTime()+100); 
+range.put(&quot;start&quot;, latestdate.getTime()-10); 
+range.put(&quot;end&quot;, latestdate.getTime()+10); 
 
 
 def requestBody= new HashMap&lt;String,HashMap&lt;String,Long&gt;&gt;();
-for(int tagcounter = 0;tagcounter&lt;100;tagcounter++) { 
+for(int tagcounter = 0;tagcounter&lt;1;tagcounter++) { 
    	def tagName= &quot;Gen&quot;+thread.getId()+&apos;Tag&apos;+tagcounter;
    	requestBody.put(tagName,range); 
 }

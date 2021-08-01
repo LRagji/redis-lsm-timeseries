@@ -38,3 +38,8 @@ Should be in a transaction redis script.
 4. XDEL ID
 --------------------------------------------------------------------------------------------------------------------------
 Need to have Tag name and tagname partition name.
+
+Ideas/TODO:
+Check on the merge algo while reading for updates and deleted entries to pick up only the latest.(TODO)
+The current write implementation doesnot look at if the redis full or not we should check for memory if its coming up to full then start purging(idea)
+Even the EnQuePurge function doesnot look at memory it just works on time we need to purge accordingly.(idea) 
