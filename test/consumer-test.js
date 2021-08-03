@@ -659,6 +659,176 @@ describe('Timeseries consumer tests', function () {
 
     });
 
+    it('Should ack partition after purging when correct parameters are presented.', async function () {
+
+        //SETUP
+        const partitionWidth = 5;
+        let inputData = new Map();
+        let qName = "Purge";
+        const Seperator = '-';
+        const recentActivityKey = "RecentActivity";
+
+        inputData.set("GapTag", new Map([[1, "One"], [2, "Two"], [10, "Ten"], [20, "Twenty"]]));
+        inputData.set("SerialTag", new Map([[1, "One"], [2, "Two"], [3, "Three"], [4, "Four"]]));
+
+        await target.initialize(partitionWidth, qName);
+
+        //WRITE
+        const bytes = await target.write(inputData);
+
+        //PURGE
+        const markedPartitionsIds = await target.purgeScan(1, 10);
+
+        //GET Purged Details
+        const results = await redisClient.xrange(target._assembleKey(qName), markedPartitionsIds[0], markedPartitionsIds[0]);
+        const partitionKey = results[0][1][0]
+        const tagName = partitionKey.split(Seperator)[0];
+
+        //PURGE-ACK
+        const returnValue = await target.purgeAck(markedPartitionsIds[0])
+        const partitionKeyExists = await redisClient.exists(target._assembleKey(partitionKey));
+        const recentActivityContainsPartitionKey = await redisClient.zrank(target._assembleKey(recentActivityKey), partitionKey);
+        const indexKeyExists = await redisClient.exists(target._assembleKey(tagName));
+
+        //Read for acked tag
+        const ranges = new Map();
+        ranges.set("GapTag", { start: 0, end: 50 });
+        ranges.set("SerialTag", { start: 0, end: 50 });
+        const readResults = await readData(ranges);
+
+        //VERIFY
+        assert.deepStrictEqual(bytes > 1n, true);
+        assert.deepStrictEqual(markedPartitionsIds.length === 4, true, `A:${markedPartitionsIds.length} E:${4}`);
+        assert.deepStrictEqual(returnValue, 1);
+        assert.deepStrictEqual(partitionKeyExists, 0);
+        assert.deepStrictEqual(recentActivityContainsPartitionKey, null);
+        assert.deepStrictEqual(indexKeyExists, 1);
+        inputData.set("GapTag", new Map([[10, "Ten"], [20, "Twenty"]]))
+        assert.deepStrictEqual(readResults, inputData);
+
+    });
+
+    it('Should ack only part of partition after purging when correct parameters are presented.', async function () {
+
+        //SETUP
+        const partitionWidth = 5;
+        let inputData = new Map();
+        let qName = "Purge";
+        const Seperator = '-';
+        const recentActivityKey = "RecentActivity";
+
+        inputData.set("GapTag", new Map([[1, "One"], [2, "Two"], [10, "Ten"], [20, "Twenty"]]));
+        inputData.set("SerialTag", new Map([[1, "One"], [2, "Two"], [3, "Three"], [4, "Four"]]));
+
+        await target.initialize(partitionWidth, qName);
+
+        //WRITE
+        const firstWriteBytes = await target.write(inputData);
+
+        //PURGE
+        const markedPartitionsIds = await target.purgeScan(1, 10);
+
+        //Write new data after marking for purge
+        const newData = new Map();
+        newData.set("GapTag", new Map([[2, "NewTwo"]]));
+        const seconWriteBytes = await target.write(newData);
+
+        //GET Purged Details
+        const results = await redisClient.xrange(target._assembleKey(qName), markedPartitionsIds[0], markedPartitionsIds[0]);
+        const partitionKey = results[0][1][0]
+        const tagName = partitionKey.split(Seperator)[0];
+
+        //PURGE-ACK
+        const returnValue = await target.purgeAck(markedPartitionsIds[0])
+        const partitionKeyExists = await redisClient.exists(target._assembleKey(partitionKey));
+        const recentActivityContainsPartitionKey = await redisClient.zrank(target._assembleKey(recentActivityKey), partitionKey);
+        const indexKeyExists = await redisClient.exists(target._assembleKey(tagName));
+
+        //Read for acked tag
+        const ranges = new Map();
+        ranges.set("GapTag", { start: 0, end: 50 });
+        ranges.set("SerialTag", { start: 0, end: 50 });
+        const readResults = await readData(ranges);
+
+        //VERIFY
+        assert.deepStrictEqual(firstWriteBytes > 1n, true);
+        assert.deepStrictEqual(seconWriteBytes > 1n, true);
+        assert.deepStrictEqual(markedPartitionsIds.length === 4, true, `A:${markedPartitionsIds.length} E:${4}`);
+        assert.deepStrictEqual(returnValue, 1);
+        assert.deepStrictEqual(partitionKeyExists, 1);
+        assert.deepStrictEqual(recentActivityContainsPartitionKey > 0, true);
+        assert.deepStrictEqual(indexKeyExists, 1);
+        inputData.set("GapTag", new Map([[2, "NewTwo"], [10, "Ten"], [20, "Twenty"]]));
+        assert.deepStrictEqual(readResults, inputData);
+    });
+
+    it('Should clear partition index and recentactivity after purging when correct parameters are presented.', async function () {
+
+        //SETUP
+        const partitionWidth = 5;
+        let inputData = new Map();
+        let qName = "Purge";
+        const Seperator = '-';
+        const recentActivityKey = "RecentActivity";
+
+        inputData.set("GapTag", new Map([[1, "One"], [2, "Two"]]));
+        inputData.set("SerialTag", new Map([[1, "One"], [2, "Two"], [3, "Three"], [4, "Four"]]));
+
+        await target.initialize(partitionWidth, qName);
+
+        //WRITE
+        const bytes = await target.write(inputData);
+
+        //PURGE
+        const markedPartitionsIds = await target.purgeScan(1, 10);
+
+        //GET Purged Details
+        const results = await redisClient.xrange(target._assembleKey(qName), markedPartitionsIds[0], markedPartitionsIds[0]);
+        const partitionKey = results[0][1][0]
+        const tagName = partitionKey.split(Seperator)[0];
+
+        //PURGE-ACK
+        const returnValue = await target.purgeAck(markedPartitionsIds[0])
+        const partitionKeyExists = await redisClient.exists(target._assembleKey(partitionKey));
+        const recentActivityContainsPartitionKey = await redisClient.zrank(target._assembleKey(recentActivityKey), partitionKey);
+        const indexKeyExists = await redisClient.exists(target._assembleKey(tagName));
+
+        //Read for acked tag
+        const ranges = new Map();
+        ranges.set("GapTag", { start: 0, end: 50 });
+        ranges.set("SerialTag", { start: 0, end: 50 });
+        const readResults = await readData(ranges);
+
+        //VERIFY
+        assert.deepStrictEqual(bytes > 1n, true);
+        assert.deepStrictEqual(markedPartitionsIds.length === 2, true, `A:${markedPartitionsIds.length} E:${4}`);
+        assert.deepStrictEqual(returnValue, 1);
+        assert.deepStrictEqual(partitionKeyExists, 0);
+        assert.deepStrictEqual(recentActivityContainsPartitionKey, null);
+        assert.deepStrictEqual(indexKeyExists, 0);
+        inputData.delete("GapTag");
+        assert.deepStrictEqual(readResults, inputData);
+
+    });
+
+    it('Should not allow to purge ack partition when not initialized', async function () {
+
+        //VERIFY
+        await assert.rejects(() => target.purgeAck(), err => assert.strictEqual(err, "Please initialize the instance by calling 'initialize' first before any calls.") == undefined);
+
+    });
+
+    it('Should not allow to purge ack partition when invalid parameter id is passed', async function () {
+
+        //SETUP
+        await target.initialize()
+
+        //VERIFY
+        await assert.rejects(() => target.purgeAck(), err => assert.strictEqual(err, `Invalid parameter 'purgeId'.`) == undefined);
+        await assert.rejects(() => target.purgeAck(""), err => assert.strictEqual(err, `Invalid parameter 'purgeId'.`) == undefined);
+
+    });
+
 });
 
 async function readData(ranges) {

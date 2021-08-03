@@ -9,6 +9,7 @@ const app = express()
 const port = 3000
 
 app.use(express.json());
+
 app.post('/set', (req, res) => {
     const data = new Map();
     Object.keys(req.body).forEach((tagName) => {
@@ -19,8 +20,8 @@ app.post('/set', (req, res) => {
         data.set(tagName, orderedData);
     });
     store.write(data)
-        .then(result => res.status(204).json(result))
-        .catch(error => res.status(500).json(error));
+        .then(result => res.status(204).json(result.toString()))
+        .catch(error => res.status(500).json(error.stack));
 });
 
 app.post('/get', (req, res) => {

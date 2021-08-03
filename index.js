@@ -15,6 +15,7 @@ const RecentAcitivityKey = "RecentActivity";
 const SafeKeyNameLength = 200;
 const WITHSCORES = "WITHSCORES";
 const scriptNameEnquePurge = "enqueue-purge";
+const scriptNamePurgeAck = "ack-purge";
 
 class SortedStore {
 
@@ -32,6 +33,7 @@ class SortedStore {
         this.readIndex = this.readIndex.bind(this);
         this.readPage = this.readPage.bind(this);
         this.purgeScan = this.purgeScan.bind(this);
+        this.purgeAck = this.purgeAck.bind(this);
     }
 
     async initialize(orderedPartitionWidth = 86400000n, purgeQueName = "Purge") {
@@ -295,6 +297,23 @@ class SortedStore {
 
         return new Promise((acc, rej) => {
             this._scriptManager.run(scriptNameEnquePurge, [this._assembleKey(RecentAcitivityKey), this._assembleKey(this._purgeQueName)], [partitionAgeThreshold, this._epoch, maxPartitionsToMark, (this.SettingsHash + Seperator)], (err, result) => {
+                if (err !== null) {
+                    return rej(err);
+                }
+                acc(result);
+            });
+        });
+    }
+
+    async purgeAck(purgeId) {
+        if (this._epoch == null) {
+            return Promise.reject("Please initialize the instance by calling 'initialize' first before any calls.");
+        }
+        if (purgeId == undefined || purgeId === "") {
+            return Promise.reject("Invalid parameter 'purgeId'.");
+        }
+        return new Promise((acc, rej) => {
+            this._scriptManager.run(scriptNamePurgeAck, [this._assembleKey(RecentAcitivityKey), this._assembleKey(this._purgeQueName)], [purgeId, Seperator, this.SettingsHash], (err, result) => {
                 if (err !== null) {
                     return rej(err);
                 }
