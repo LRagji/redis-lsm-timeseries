@@ -154,7 +154,7 @@ describe('Timeseries consumer tests', function () {
             };
         }
 
-    });
+    }).timeout(2100);
 
     it('Should read correct indexes in reverse order when correct data been written', async function () {
 
@@ -826,6 +826,58 @@ describe('Timeseries consumer tests', function () {
         //VERIFY
         await assert.rejects(() => target.purgeAck(), err => assert.strictEqual(err, `Invalid parameter 'purgeId'.`) == undefined);
         await assert.rejects(() => target.purgeAck(""), err => assert.strictEqual(err, `Invalid parameter 'purgeId'.`) == undefined);
+
+    });
+
+    it('Should parse partition data after purge scan when correct parameters are presented.', async function () {
+
+        //SETUP
+        const partitionWidth = 5;
+        let inputData = new Map();
+        let qName = "Purge";
+        const Seperator = '-';
+        const recentActivityKey = "RecentActivity";
+
+        inputData.set("GapTag", new Map([[1, "One"], [2, "Two"], [10, "Ten"], [20, "Twenty"]]));
+        inputData.set("SerialTag", new Map([[1, "One"], [2, "Two"], [3, "Three"], [4, "Four"]]));
+
+        await target.initialize(partitionWidth, qName);
+
+        //WRITE
+        const bytes = await target.write(inputData);
+
+        //PURGE
+        const markedPartitionsIds = await target.purgeScan(1, 10);
+
+        //GET Purged Details
+        const results = await redisClient.xrange(target._assembleKey(qName), markedPartitionsIds[0], markedPartitionsIds[0]);
+        const parsedData = target.parsePurgePayload(results)
+        const partitionKey = parsedData.partition;
+        const tagName = partitionKey.split(Seperator)[0];
+
+        //PURGE-ACK
+        const returnValue = await target.purgeAck(markedPartitionsIds[0])
+        const partitionKeyExists = await redisClient.exists(target._assembleKey(partitionKey));
+        const recentActivityContainsPartitionKey = await redisClient.zrank(target._assembleKey(recentActivityKey), partitionKey);
+        const indexKeyExists = await redisClient.exists(target._assembleKey(tagName));
+
+        //Read for acked tag
+        const ranges = new Map();
+        ranges.set("GapTag", { start: 0, end: 50 });
+        ranges.set("SerialTag", { start: 0, end: 50 });
+        const readResults = await readData(ranges);
+
+        //VERIFY
+        assert.deepStrictEqual(bytes > 1n, true);
+        assert.deepStrictEqual(markedPartitionsIds.length === 4, true, `A:${markedPartitionsIds.length} E:${4}`);
+        assert.deepStrictEqual(returnValue, 1);
+        assert.deepStrictEqual(partitionKeyExists, 0);
+        assert.deepStrictEqual(recentActivityContainsPartitionKey, null);
+        assert.deepStrictEqual(indexKeyExists, 1);
+        inputData.set("GapTag", new Map([[10, "Ten"], [20, "Twenty"]]))
+        assert.deepStrictEqual(readResults, inputData);
+        assert.deepStrictEqual(parsedData.id, markedPartitionsIds[0]);
+        assert.deepStrictEqual(parsedData.data, new Map([[1, "One"], [2, "Two"]]));
 
     });
 

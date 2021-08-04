@@ -30,10 +30,13 @@ class SortedStore {
         this._validateTransformParameters = this._validateTransformParameters.bind(this);
         this._settingsHash = this._settingsHash.bind(this);
         this._assembleKey = this._assembleKey.bind(this);
+        this._parseRedisData = this._parseRedisData.bind(this);
+        this._extractPartitionStart = this._extractPartitionStart.bind(this);
         this.readIndex = this.readIndex.bind(this);
         this.readPage = this.readPage.bind(this);
         this.purgeScan = this.purgeScan.bind(this);
         this.purgeAck = this.purgeAck.bind(this);
+        this.parsePurgePayload = this.parsePurgePayload.bind(this);
     }
 
     async initialize(orderedPartitionWidth = 86400000n, purgeQueName = "Purge") {
@@ -234,11 +237,7 @@ class SortedStore {
             return Promise.reject(`Parameter "pagename" should be a valid string with characters not exceeding ${SafeKeyNameLength * 2}.`);
         }
         try {
-            const seperatorIndex = pagename.lastIndexOf(Seperator);
-            if (seperatorIndex < 0 || (seperatorIndex + 1) >= pagename.length) {
-                throw new Error("Seperator misplaced @" + seperatorIndex);
-            }
-            partitionStart = BigInt(pagename.substring(seperatorIndex + 1));
+            partitionStart = this._extractPartitionStart(pagename);
         }
         catch (error) {
             return Promise.reject(`Invalid 'pagename': ${error.message}`);
@@ -256,17 +255,30 @@ class SortedStore {
             return Promise.reject(`Invalid end range for ${pagename}: ${error.message}`);
         };
 
-        let returnMap = new Map();
         const response = await this._redisClient.zrange(this._assembleKey(pagename), 0, -1, WITHSCORES);
-        for (let index = 0; index < response.length; index += 2) {
-            const sortKey = partitionStart + BigInt(response[index + 1]);
-            if (start <= sortKey && sortKey <= end) {
-                const item = JSON.parse(response[index]).p;
+        const returnMap = this._parseRedisData(response, partitionStart, (sortKey) => start <= sortKey && sortKey <= end);
+
+        return Promise.resolve(returnMap);
+    }
+
+    _extractPartitionStart(partitionName) {
+        const seperatorIndex = partitionName.lastIndexOf(Seperator);
+        if (seperatorIndex < 0 || (seperatorIndex + 1) >= partitionName.length) {
+            throw new Error("Seperator misplaced @" + seperatorIndex);
+        }
+        return BigInt(partitionName.substring(seperatorIndex + 1));
+    }
+
+    _parseRedisData(redisData, partitionStart, filter = () => true) {
+        let returnMap = new Map();
+        for (let index = 0; index < redisData.length; index += 2) {
+            const sortKey = partitionStart + BigInt(redisData[index + 1]);
+            if (filter(sortKey)) {
+                const item = JSON.parse(redisData[index]).p;
                 returnMap.set(Number(sortKey), item);
             }
         }
-
-        return Promise.resolve(returnMap);
+        return returnMap;
     }
 
     async purgeScan(partitionAgeThreshold = 300, maxPartitionsToMark = 10) {
@@ -320,6 +332,13 @@ class SortedStore {
                 acc(result);
             });
         });
+    }
+
+    parsePurgePayload(payload) {
+        const partitionName = payload[0][1][0];
+        const partitionStart = this._extractPartitionStart(partitionName);
+        const data = JSON.parse(payload[0][1][1]);
+        return { "id": payload[0][0], "partition": partitionName, "data": this._parseRedisData(data, partitionStart) };
     }
 }
 

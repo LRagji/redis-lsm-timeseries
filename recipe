@@ -42,4 +42,6 @@ Need to have Tag name and tagname partition name.
 Ideas/TODO:
 Check on the merge algo while reading for updates and deleted entries to pick up only the latest.(TODO)
 The current write implementation doesnot look at if the redis full or not we should check for memory if its coming up to full then start purging(idea)
-Even the EnQuePurge function doesnot look at memory it just works on time we need to purge accordingly.(idea) 
+Even the EnQuePurge function doesnot look at memory it just works on time we need to purge accordingly.(idea)
+Write api to accept a paramter for returning size defaulted to false so that we dont make info call everytime.(TODO)
+Write call optimization with batching all insert commands into transactions.(idea)
