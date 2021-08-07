@@ -20,6 +20,7 @@ const scriptNamePurgeAck = "ack-purge";
 class SortedStore {
 
     purgeQueName
+    instanceName
 
     constructor(redisClient, scriptManager = new Scripto(redisClient)) {
         this._scriptManager = scriptManager;
@@ -53,7 +54,7 @@ class SortedStore {
             return Promise.reject(`Initialization Failed: EPOCH is misplaced with ${this._epoch}.`);
         }
         else {
-            this._instanceIdentifier = shortid.generate();
+            this.instanceName = shortid.generate();
             this._epoch = BigInt(this._epoch);
             return Promise.resolve(this._epoch);
         }
@@ -118,7 +119,7 @@ class SortedStore {
                     sortKey = BigInt(sortKey);
                     const partitionStart = sortKey - (sortKey % this._orderedPartitionWidth);
                     const partitionName = `${partitionKey}${Seperator}${partitionStart}`;
-                    const serializedItem = JSON.stringify({ 'p': item, 'u': `${sampleIngestionTime}-${this._instanceIdentifier}-${itemCounter}` });
+                    const serializedItem = JSON.stringify({ 'p': item, 'u': `${sampleIngestionTime}-${this.instanceName}-${itemCounter}` });
                     const relativeKeyFromPartitionStart = sortKey - partitionStart;
                     const epochRelativePartitionStart = this._epoch - partitionStart;
                     const epochRelativeActivityTime = sampleIngestionTime - this._epoch;

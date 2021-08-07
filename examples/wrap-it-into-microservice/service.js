@@ -10,7 +10,6 @@ const store = new timeseriesType(redisClient);
 const app = express()
 const port = 3000
 const purgeLimit = 1//1e8;//~200MB
-const qName = "PURGE";
 const redisClientBroker = new redisType(localRedisConnectionString);
 const brokerType = require('redis-streams-broker').StreamChannelBroker;
 
@@ -101,13 +100,20 @@ async function newMessageHandler(payloads) {
 
 //Startup
 (async () => {
-    await store.initialize(30000, qName);
+    await store.initialize(30000);
+    const consumerName = `C-${store.instanceName}`;
     const broker = new brokerType(redisClientBroker, store.purgeQueName);
     const consumerGroup = await broker.joinConsumerGroup("MyGroup");
-    await consumerGroup.subscribe("Consumer1", newMessageHandler, 3000, 5000);
+    await consumerGroup.subscribe(consumerName, newMessageHandler, 3000, 5000);
+    return consumerName;
 })()
-    .then(epoch => {
-        app.listen(port, () => {
-            console.log(`Example app listening at http://localhost:${port}`)
-        })
+    .then(consumerName => {
+        if (process.argv[2] === "Mute") {
+            console.log(`${consumerName} is running in muted mode.`)
+        }
+        else {
+            app.listen(port, () => {
+                console.log(`${consumerName} listening at http://localhost:${port}`);
+            })
+        }
     });
