@@ -39,6 +39,7 @@
     "ioredis": "^4.27.6",
     "mocha": "^9.0.2",
     "nyc": "^15.1.0",
-    "redis": "^3.1.2"
+    "redis": "^3.1.2",
+    "redis-streams-broker": "0.0.12"
   }
 }

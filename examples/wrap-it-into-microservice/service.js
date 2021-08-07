@@ -1,5 +1,7 @@
 //This is just a sample microservice
 const express = require('express')
+const fs = require('fs').promises;
+const path = require('path');
 const redisType = require("ioredis");
 const timeseriesType = require("../../index").Timeseries;
 const localRedisConnectionString = "redis://127.0.0.1:6379/";
@@ -7,21 +9,33 @@ const redisClient = new redisType(localRedisConnectionString);
 const store = new timeseriesType(redisClient);
 const app = express()
 const port = 3000
+const purgeLimit = 1//1e8;//~200MB
+const qName = "PURGE";
+const redisClientBroker = new redisType(localRedisConnectionString);
+const brokerType = require('redis-streams-broker').StreamChannelBroker;
+
 
 app.use(express.json());
 
-app.post('/set', (req, res) => {
-    const data = new Map();
-    Object.keys(req.body).forEach((tagName) => {
-        const orderedData = new Map();
-        Object.keys(req.body[tagName]).forEach((time) => {
-            orderedData.set(BigInt(time), req.body[tagName][time]);
+app.post('/set', async (req, res) => {
+    try {
+        const data = new Map();
+        Object.keys(req.body).forEach((tagName) => {
+            const orderedData = new Map();
+            Object.keys(req.body[tagName]).forEach((time) => {
+                orderedData.set(BigInt(time), req.body[tagName][time]);
+            });
+            data.set(tagName, orderedData);
         });
-        data.set(tagName, orderedData);
-    });
-    store.write(data)
-        .then(result => res.status(204).json(result.toString()))
-        .catch(error => res.status(500).json(error.stack));
+        const bytes = await store.write(data);
+        if (bytes > BigInt(purgeLimit)) {
+            await store.purgeScan(5000, 1000);
+        }
+        res.status(200).json(bytes.toString());
+    }
+    catch (err) {
+        res.status(500).json(err.stack);
+    }
 });
 
 app.post('/get', (req, res) => {
@@ -70,10 +84,27 @@ async function readData(ranges) {
     return returnObject;
 }
 
+async function newMessageHandler(payloads) {
+    let multiWrites = payloads.map(async element => {
+        element.data = store.parsePurgePayload(element.raw);
+        let fileData = "";
+        const entryTime = Date.now();
+        element.data.data.forEach((v, k) => {
+            fileData += `\r\n${k},${entryTime},${Buffer.from(String(v)).toString("base64")}`;
+        });
+        await fs.appendFile(path.join(__dirname, "/raw-db/", element.data.partition + ".txt"), fileData);
+        await store.purgeAck(element.id);
+        await element.markAsRead(true);
+    });
+    await Promise.all(multiWrites);
+}
 
 //Startup
 (async () => {
-    return await store.initialize();
+    await store.initialize(30000, qName);
+    const broker = new brokerType(redisClientBroker, store.purgeQueName);
+    const consumerGroup = await broker.joinConsumerGroup("MyGroup");
+    await consumerGroup.subscribe("Consumer1", newMessageHandler, 3000, 2000);
 })()
     .then(epoch => {
         app.listen(port, () => {

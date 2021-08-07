@@ -4,3 +4,4 @@ coverage
 jmeter.log
 jmeter.jtl
 /perf/results
+raw-db

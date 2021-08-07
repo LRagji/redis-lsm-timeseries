@@ -19,6 +19,8 @@ const scriptNamePurgeAck = "ack-purge";
 
 class SortedStore {
 
+    purgeQueName
+
     constructor(redisClient, scriptManager = new Scripto(redisClient)) {
         this._scriptManager = scriptManager;
         this._redisClient = redisClient;
@@ -41,8 +43,8 @@ class SortedStore {
 
     async initialize(orderedPartitionWidth = 86400000n, purgeQueName = "Purge") {
         this._orderedPartitionWidth = BigInt(orderedPartitionWidth);
-        this._purgeQueName = purgeQueName;
         this.SettingsHash = this._settingsHash({ "version": 1.0, "partitionWidth": this._orderedPartitionWidth.toString(), "purgeQueName": purgeQueName });
+        this.purgeQueName = this._assembleKey(purgeQueName);
         await this._redisClient.set(this._assembleKey(EPOCHKey), Date.now().toString(DecimalRadix), SetOptionDonotOverwrite);
         this._epoch = await this._redisClient.get(this._assembleKey(EPOCHKey));
         this._epoch = parseInt(this._epoch, DecimalRadix);
@@ -308,7 +310,7 @@ class SortedStore {
         }
 
         return new Promise((acc, rej) => {
-            this._scriptManager.run(scriptNameEnquePurge, [this._assembleKey(RecentAcitivityKey), this._assembleKey(this._purgeQueName)], [partitionAgeThreshold, this._epoch, maxPartitionsToMark, (this.SettingsHash + Seperator)], (err, result) => {
+            this._scriptManager.run(scriptNameEnquePurge, [this._assembleKey(RecentAcitivityKey), this.purgeQueName], [partitionAgeThreshold, this._epoch, maxPartitionsToMark, (this.SettingsHash + Seperator)], (err, result) => {
                 if (err !== null) {
                     return rej(err);
                 }
@@ -325,7 +327,7 @@ class SortedStore {
             return Promise.reject("Invalid parameter 'purgeId'.");
         }
         return new Promise((acc, rej) => {
-            this._scriptManager.run(scriptNamePurgeAck, [this._assembleKey(RecentAcitivityKey), this._assembleKey(this._purgeQueName)], [purgeId, Seperator, this.SettingsHash], (err, result) => {
+            this._scriptManager.run(scriptNamePurgeAck, [this._assembleKey(RecentAcitivityKey), this.purgeQueName], [purgeId, Seperator, this.SettingsHash], (err, result) => {
                 if (err !== null) {
                     return rej(err);
                 }
@@ -335,10 +337,10 @@ class SortedStore {
     }
 
     parsePurgePayload(payload) {
-        const partitionName = payload[0][1][0];
+        const partitionName = payload[1][0];
         const partitionStart = this._extractPartitionStart(partitionName);
-        const data = JSON.parse(payload[0][1][1]);
-        return { "id": payload[0][0], "partition": partitionName, "data": this._parseRedisData(data, partitionStart) };
+        const data = JSON.parse(payload[1][1]);
+        return { "id": payload[0], "partition": partitionName, "data": this._parseRedisData(data, partitionStart) };
     }
 }
 
