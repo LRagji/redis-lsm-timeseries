@@ -154,7 +154,7 @@ describe('Timeseries consumer tests', function () {
             };
         }
 
-    }).timeout(2100);
+    }).timeout(-1);
 
     it('Should read correct indexes in reverse order when correct data been written', async function () {
 
