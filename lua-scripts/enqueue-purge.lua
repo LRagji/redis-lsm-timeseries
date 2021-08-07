@@ -15,6 +15,7 @@ for i = 1, #lastElementWithScore,2 do
     if(lastElementWithScore[i+1] > purgeThreshold) then 
         local dataToBePurged = redis.call('ZRANGE',(spaceKey ..lastElementWithScore[i]),0,-1,'WITHSCORES')
         local id = redis.call('XADD',purgeStreamKey,'*',lastElementWithScore[i],cjson.encode(dataToBePurged))
+        redis.call('ZREM' ,recentActivityKey,lastElementWithScore[i])
         table.insert(enquedIds,id)
     end
 end

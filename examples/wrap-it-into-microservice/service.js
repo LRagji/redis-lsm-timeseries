@@ -104,7 +104,7 @@ async function newMessageHandler(payloads) {
     await store.initialize(30000, qName);
     const broker = new brokerType(redisClientBroker, store.purgeQueName);
     const consumerGroup = await broker.joinConsumerGroup("MyGroup");
-    await consumerGroup.subscribe("Consumer1", newMessageHandler, 3000, 2000);
+    await consumerGroup.subscribe("Consumer1", newMessageHandler, 3000, 5000);
 })()
     .then(epoch => {
         app.listen(port, () => {

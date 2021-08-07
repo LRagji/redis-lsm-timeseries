@@ -16,7 +16,6 @@ if(#data > 0) then
     end
 
     if (redis.call('EXISTS',spaceKey .. seperator .. cleanUpKey) == 0) then
-        redis.call('ZREM' ,recentActivityKey,cleanUpKey)
         redis.call('ZREM', spaceKey .. seperator .. indexKey, cleanUpKey)
     end 
 

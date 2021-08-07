@@ -708,6 +708,44 @@ describe('Timeseries consumer tests', function () {
 
     });
 
+    it('Should purge data only once even if it purge is called multiple times.', async function () {
+
+        //SETUP
+        const partitionWidth = 5;
+        let inputData = new Map();
+        let qName = "Purge";
+        const Seperator = '-';
+        const recentActivityKey = "RecentActivity";
+
+        inputData.set("GapTag", new Map([[1, "One"], [2, "Two"], [10, "Ten"], [20, "Twenty"]]));
+        inputData.set("SerialTag", new Map([[1, "One"], [2, "Two"], [3, "Three"], [4, "Four"]]));
+
+        await target.initialize(partitionWidth, qName);
+
+        //WRITE
+        const firstWriteBytes = await target.write(inputData);
+
+        //PURGE
+        const markedPartitionsIds1 = await target.purgeScan(1, 10);
+        const markedPartitionsIds2 = await target.purgeScan(1, 10);
+        const markedPartitionsIds3 = await target.purgeScan(1, 10);
+        const markedPartitionsIds4 = await target.purgeScan(1, 10);
+
+        //Read for acked tag
+        const ranges = new Map();
+        ranges.set("GapTag", { start: 0, end: 50 });
+        ranges.set("SerialTag", { start: 0, end: 50 });
+        const readResults = await readData(ranges);
+
+        //VERIFY
+        assert.deepStrictEqual(firstWriteBytes > 1n, true);
+        assert.deepStrictEqual(markedPartitionsIds1.length === 4, true, `A:${markedPartitionsIds1.length} E:${4}`);
+        assert.deepStrictEqual(markedPartitionsIds2.length === 0, true, `A:${markedPartitionsIds2.length} E:${4}`);
+        assert.deepStrictEqual(markedPartitionsIds3.length === 0, true, `A:${markedPartitionsIds3.length} E:${4}`);
+        assert.deepStrictEqual(markedPartitionsIds4.length === 0, true, `A:${markedPartitionsIds4.length} E:${4}`);
+        assert.deepStrictEqual(readResults, inputData);
+    });
+
     it('Should ack only part of partition after purging when correct parameters are presented.', async function () {
 
         //SETUP
@@ -756,7 +794,7 @@ describe('Timeseries consumer tests', function () {
         assert.deepStrictEqual(markedPartitionsIds.length === 4, true, `A:${markedPartitionsIds.length} E:${4}`);
         assert.deepStrictEqual(returnValue, 1);
         assert.deepStrictEqual(partitionKeyExists, 1);
-        assert.deepStrictEqual(recentActivityContainsPartitionKey > 0, true);
+        assert.deepStrictEqual(recentActivityContainsPartitionKey > -1, true);
         assert.deepStrictEqual(indexKeyExists, 1);
         inputData.set("GapTag", new Map([[2, "NewTwo"], [10, "Ten"], [20, "Twenty"]]));
         assert.deepStrictEqual(readResults, inputData);
