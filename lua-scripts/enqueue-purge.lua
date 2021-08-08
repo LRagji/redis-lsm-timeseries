@@ -13,7 +13,7 @@ local lastElementWithScore = redis.call('ZRANGE',recentActivityKey,0,scanEntries
 for i = 1, #lastElementWithScore,2 do
     local relativeActivityTime = currentTimestamp - math.floor((tonumber(lastElementWithScore[i+1]) + epoch)/1000)
 
-    if(relativeActivityTime > purgeThreshold) then 
+    if(relativeActivityTime >= purgeThreshold) then 
         local dataToBePurged = redis.call('ZRANGE',(spaceKey ..lastElementWithScore[i]),0,-1,'WITHSCORES')
         local id = redis.call('XADD',purgeStreamKey,'*',lastElementWithScore[i],cjson.encode(dataToBePurged))
         redis.call('ZREM' ,recentActivityKey,lastElementWithScore[i])
