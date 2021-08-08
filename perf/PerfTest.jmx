@@ -149,7 +149,7 @@ vars.put(&quot;rb&quot;,JsonOutput.toJson(requestBody));</stringProp>
         <CounterConfig guiclass="CounterConfigGui" testclass="CounterConfig" testname="Time" enabled="true">
           <stringProp name="CounterConfig.start">${__timeShift(,,,,)}</stringProp>
           <stringProp name="CounterConfig.end"></stringProp>
-          <stringProp name="CounterConfig.incr">10</stringProp>
+          <stringProp name="CounterConfig.incr">10000</stringProp>
           <stringProp name="CounterConfig.name">Time</stringProp>
           <stringProp name="CounterConfig.format"></stringProp>
           <boolProp name="CounterConfig.per_user">true</boolProp>

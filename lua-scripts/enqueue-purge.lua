@@ -20,7 +20,7 @@ for i = 1, #lastElementWithScore,2 do
         table.insert(enquedIds,id)
     end
     -- table.insert(enquedIds,relativeActivityTime)
-    -- table.insert(enquedIds,lastElementWithScore[i+1])
+    -- table.insert(enquedIds,lastElementWithScore[i])
     -- table.insert(enquedIds,epoch)
     -- table.insert(enquedIds,math.floor((tonumber(lastElementWithScore[i+1]) + epoch)/1000))
     -- table.insert(enquedIds,currentTimestamp)
