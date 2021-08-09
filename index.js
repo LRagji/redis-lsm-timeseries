@@ -26,6 +26,7 @@ class SortedStore {
         this._scriptManager = scriptManager;
         this._redisClient = redisClient;
         this._scriptManager.loadFromDir(path.join(__dirname, "lua-scripts"));
+        shortid.characters("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_>");
 
         //local functions
         this.initialize = this.initialize.bind(this);

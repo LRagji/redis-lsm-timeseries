@@ -102,7 +102,7 @@ describe('Timeseries consumer tests', function () {
 
     });
 
-    it('Should write correct data when presented', async function () {
+    it('Should write correct data when presented PERF', async function () {
 
         //SETUP
         const partitionWidth = 10;
@@ -155,6 +155,192 @@ describe('Timeseries consumer tests', function () {
         }
 
     }).timeout(-1);
+
+    it('Should write & read correct data when sample time is greater than EPOCH', async function () {
+
+        //SETUP
+        const partitionWidth = 10;
+        const recentActivityKey = "RecentActivity";
+        const Seperator = "-";
+        const EPOCH = parseInt(await target.initialize(partitionWidth));
+        const SampleOneTimestamp = EPOCH + 21;
+        let inputData = new Map();
+        inputData.set("GapTag", new Map([[SampleOneTimestamp, "One"]]));
+
+        //EXECUTE
+        const serverMemoryBytes = await target.write(inputData);
+
+        //READ
+        let ranges = new Map();
+        ranges.set("GapTag", { start: EPOCH, end: SampleOneTimestamp });
+        const readResult = await readData(ranges);
+
+        //VERIFY
+        assert.strictEqual(true, serverMemoryBytes > 0n);
+
+        //Data
+        const partitionStart = SampleOneTimestamp - (SampleOneTimestamp % partitionWidth);
+        const partitionName = "GapTag" + Seperator + partitionStart.toString();
+        const partitionKey = target._assembleKey(partitionName);
+        const partionShouldExists = await redisClient.exists(partitionKey);
+        assert.strictEqual(partionShouldExists, 1);
+        const payloadScore = SampleOneTimestamp - partitionStart
+        let actualPayload = await redisClient.zrangebyscore(partitionKey, payloadScore, payloadScore);
+        assert.strictEqual(actualPayload.length, 1);
+        actualPayload = JSON.parse(actualPayload[0]);
+        assert.strictEqual(actualPayload.p, "One");
+        const instanceName = actualPayload.u.split(Seperator)[1];
+        assert.strictEqual(instanceName, target.instanceName);
+
+        //Index
+        const indexKey = target._assembleKey("GapTag");
+        const payloadInsertTime = BigInt(actualPayload.u.split(Seperator)[0]);
+        assert.strictEqual(payloadInsertTime >= EPOCH, true);
+        const indexShouldExists = await redisClient.exists(indexKey);
+        assert.strictEqual(indexShouldExists, 1);
+        const indexScore = EPOCH - partitionStart;
+        const indexEntry = await redisClient.zrangebyscore(indexKey, indexScore, indexScore);
+        assert.strictEqual(indexEntry.length, 1);
+        assert.strictEqual(indexEntry[0], partitionName);
+
+        //RecentActivity
+        const racKey = target._assembleKey(recentActivityKey);
+        const recentActivityShouldExists = await redisClient.exists(racKey);
+        assert.strictEqual(recentActivityShouldExists, 1);
+        const racScore = payloadInsertTime - BigInt(EPOCH);
+        const racEntry = await redisClient.zrangebyscore(racKey, racScore, racScore);
+        assert.strictEqual(racEntry.length, 1);
+        assert.strictEqual(racEntry[0], partitionName);
+
+        //Read results
+        assert.deepStrictEqual(readResult, inputData);
+
+    });
+
+    it('Should write & read correct data when sample time is smaller than EPOCH', async function () {
+
+        //SETUP
+        const partitionWidth = 10;
+        const recentActivityKey = "RecentActivity";
+        const Seperator = "-";
+        const EPOCH = parseInt(await target.initialize(partitionWidth));
+        const SampleOneTimestamp = EPOCH - 21;
+        let inputData = new Map();
+        inputData.set("GapTag", new Map([[SampleOneTimestamp, "One"]]));
+
+        //EXECUTE
+        const serverMemoryBytes = await target.write(inputData);
+
+        //READ
+        let ranges = new Map();
+        ranges.set("GapTag", { start: SampleOneTimestamp, end: EPOCH });
+        const readResult = await readData(ranges);
+
+        //VERIFY
+        assert.strictEqual(true, serverMemoryBytes > 0n);
+
+        //Data
+        const partitionStart = SampleOneTimestamp - (SampleOneTimestamp % partitionWidth);
+        const partitionName = "GapTag" + Seperator + partitionStart.toString();
+        const partitionKey = target._assembleKey(partitionName);
+        const partionShouldExists = await redisClient.exists(partitionKey);
+        assert.strictEqual(partionShouldExists, 1);
+        const payloadScore = SampleOneTimestamp - partitionStart
+        let actualPayload = await redisClient.zrangebyscore(partitionKey, payloadScore, payloadScore);
+        assert.strictEqual(actualPayload.length, 1);
+        actualPayload = JSON.parse(actualPayload[0]);
+        assert.strictEqual(actualPayload.p, "One");
+        const instanceName = actualPayload.u.split(Seperator)[1];
+        assert.strictEqual(instanceName, target.instanceName);
+
+        //Index
+        const indexKey = target._assembleKey("GapTag");
+        const payloadInsertTime = BigInt(actualPayload.u.split(Seperator)[0]);
+        assert.strictEqual(payloadInsertTime >= EPOCH, true);
+        const indexShouldExists = await redisClient.exists(indexKey);
+        assert.strictEqual(indexShouldExists, 1);
+        const indexScore = EPOCH - partitionStart;
+        const indexEntry = await redisClient.zrangebyscore(indexKey, indexScore, indexScore);
+        assert.strictEqual(indexEntry.length, 1);
+        assert.strictEqual(indexEntry[0], partitionName);
+
+        //RecentActivity
+        const racKey = target._assembleKey(recentActivityKey);
+        const recentActivityShouldExists = await redisClient.exists(racKey);
+        assert.strictEqual(recentActivityShouldExists, 1);
+        const racScore = payloadInsertTime - BigInt(EPOCH);
+        const racEntry = await redisClient.zrangebyscore(racKey, racScore, racScore);
+        assert.strictEqual(racEntry.length, 1);
+        assert.strictEqual(racEntry[0], partitionName);
+
+        //Read results
+        assert.deepStrictEqual(readResult, inputData);
+
+    });
+
+    it('Should write & read correct data when multiple writes have occured', async function () {
+
+        //SETUP
+        const partitionWidth = 10;
+        const recentActivityKey = "RecentActivity";
+        const Seperator = "-";
+        const EPOCH = parseInt(await target.initialize(partitionWidth));
+        const SampleOneTimestamp = EPOCH + 21;
+        const SampleTwoTimestamp = SampleOneTimestamp - 100;
+        let inputData = new Map();
+        inputData.set("GapTag", new Map([[SampleOneTimestamp, "One"]]));
+        inputData.set("GapTag2", new Map([[SampleTwoTimestamp, "One2"]]));
+
+        //EXECUTE
+        const serverMemoryBytes = await target.write(inputData);
+
+        //READ
+        let ranges = new Map();
+        ranges.set("GapTag", { start: SampleTwoTimestamp, end: SampleOneTimestamp });
+        ranges.set("GapTag2", { start: SampleTwoTimestamp, end: SampleOneTimestamp });
+        const readResult = await readData(ranges);
+
+        //VERIFY
+        assert.strictEqual(true, serverMemoryBytes > 0n);
+
+        //Data
+        const partitionStart = SampleOneTimestamp - (SampleOneTimestamp % partitionWidth);
+        const partitionName = "GapTag" + Seperator + partitionStart.toString();
+        const partitionKey = target._assembleKey(partitionName);
+        const partionShouldExists = await redisClient.exists(partitionKey);
+        assert.strictEqual(partionShouldExists, 1);
+        const payloadScore = SampleOneTimestamp - partitionStart
+        let actualPayload = await redisClient.zrangebyscore(partitionKey, payloadScore, payloadScore);
+        assert.strictEqual(actualPayload.length, 1);
+        actualPayload = JSON.parse(actualPayload[0]);
+        assert.strictEqual(actualPayload.p, "One");
+        const instanceName = actualPayload.u.split(Seperator)[1];
+        assert.strictEqual(instanceName, target.instanceName);
+
+        //Index
+        const indexKey = target._assembleKey("GapTag");
+        const payloadInsertTime = BigInt(actualPayload.u.split(Seperator)[0]);
+        assert.strictEqual(payloadInsertTime >= EPOCH, true);
+        const indexShouldExists = await redisClient.exists(indexKey);
+        assert.strictEqual(indexShouldExists, 1);
+        const indexScore = EPOCH - partitionStart;
+        const indexEntry = await redisClient.zrangebyscore(indexKey, indexScore, indexScore);
+        assert.strictEqual(indexEntry.length, 1);
+        assert.strictEqual(indexEntry[0], partitionName);
+
+        //RecentActivity
+        const racKey = target._assembleKey(recentActivityKey);
+        const recentActivityShouldExists = await redisClient.exists(racKey);
+        assert.strictEqual(recentActivityShouldExists, 1);
+        const racScore = payloadInsertTime - BigInt(EPOCH);
+        const racEntry = await redisClient.zrangebyscore(racKey, racScore, racScore);
+        assert.strictEqual(racEntry.length, 2);
+        assert.strictEqual(racEntry.indexOf(partitionName) > -1, true);
+
+        //Read results
+        assert.deepStrictEqual(readResult, inputData);
+
+    });
 
     it('Should read correct indexes in reverse order when correct data been written', async function () {
 

@@ -72,8 +72,9 @@ Thread thread = Thread.currentThread();
 Date latestdate = new Date(); 
 def predefinedSamples = new HashMap&lt;String,Float&gt;();
 for(int timecounter = 0;timecounter&lt;10;timecounter++) { 
-   	predefinedSamples.put(latestdate.getTime()+timecounter+&quot;&quot;, timecounter); 
+   	predefinedSamples.put((new BigInteger(vars.get(&quot;Time&quot;))+(timecounter*10000)+&quot;&quot;), timecounter); 
 }
+
 
 def requestBody= new HashMap&lt;String,HashMap&lt;String,Float&gt;&gt;();
 for(int tagcounter = 0;tagcounter&lt;200;tagcounter++) { 
@@ -144,6 +145,15 @@ vars.put(&quot;rb&quot;,JsonOutput.toJson(requestBody));</stringProp>
             <savedValue>0.0</savedValue>
           </doubleProp>
         </ConstantThroughputTimer>
+        <hashTree/>
+        <CounterConfig guiclass="CounterConfigGui" testclass="CounterConfig" testname="Time" enabled="true">
+          <stringProp name="CounterConfig.start">${__timeShift(,,,,)}</stringProp>
+          <stringProp name="CounterConfig.end"></stringProp>
+          <stringProp name="CounterConfig.incr">10000</stringProp>
+          <stringProp name="CounterConfig.name">Time</stringProp>
+          <stringProp name="CounterConfig.format"></stringProp>
+          <boolProp name="CounterConfig.per_user">true</boolProp>
+        </CounterConfig>
         <hashTree/>
       </hashTree>
       <ResultCollector guiclass="SummaryReport" testclass="ResultCollector" testname="Summary Report" enabled="true">
