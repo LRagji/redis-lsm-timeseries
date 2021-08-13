@@ -6,13 +6,18 @@ local seperator = ARGV[2]
 local spaceKey = ARGV[3]
 
 local data = redis.call('XRANGE',purgeStreamKey,purgeAckId,purgeAckId)
-if(#data > 0) then 
+if (#data > 0) then 
     local cleanUpKey = data[1][2][1]
     indexKey = string.sub(cleanUpKey,0,(string.find(cleanUpKey, (seperator.."[^"..seperator.."]*$"))-1))
     local elements = cjson.decode(data[1][2][2])
 
+    local membersToDelete = {}
     for i = 1, #elements,2 do
-    redis.call('ZREM',spaceKey .. seperator .. cleanUpKey,elements[i])
+        table.insert(membersToDelete,elements[i])
+    end
+
+    if (#membersToDelete > 0) then
+        redis.call('ZREM',spaceKey .. seperator .. cleanUpKey,unpack(membersToDelete))
     end
 
     if (redis.call('EXISTS',spaceKey .. seperator .. cleanUpKey) == 0) then
