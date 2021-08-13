@@ -10,7 +10,6 @@ const store = new timeseriesType(redisClient);
 const app = express()
 const port = 3000
 const purgeLimit = 1//1e8;//~200MB
-const redisClientBroker = new redisType(localRedisConnectionString);
 const brokerType = require('redis-streams-broker').StreamChannelBroker;
 
 
@@ -86,13 +85,13 @@ async function readData(ranges) {
 async function newMessageHandler(payloads) {
     let time = Date.now();
     let multiWrites = payloads.map(async element => {
-        // element.data = store.parsePurgePayload(element.raw);
-        // let fileData = "";
-        // const entryTime = Date.now();
-        // element.data.data.forEach((v, k) => {
-        //     fileData += `\r\n${k},${entryTime},${Buffer.from(String(v)).toString("base64")}`;
-        // });
-        // await fs.appendFile(path.join(__dirname, "/raw-db/", element.data.partition + ".txt"), fileData);
+        element.data = store.parsePurgePayload(element.raw);
+        let fileData = "";
+        const entryTime = Date.now();
+        element.data.data.forEach((v, k) => {
+            fileData += `\r\n${k},${entryTime},${Buffer.from(String(v)).toString("base64")}`;
+        });
+        await fs.appendFile(path.join(__dirname, "/raw-db/", element.data.partition + ".txt"), fileData);
         await store.purgeAck(element.id);
         await element.markAsRead(true);
     });
@@ -105,23 +104,31 @@ async function newMessageHandler(payloads) {
 (async () => {
     await store.initialize(30000);
     const consumerName = `C-${store.instanceName}`;
-    const broker = new brokerType(redisClientBroker, store.purgeQueName);
-    const consumerGroup = await broker.joinConsumerGroup("MyGroup");
-    await consumerGroup.subscribe(consumerName, newMessageHandler, 15000, 1);
-    return consumerName;
+    if (process.argv[2] === "Mute") {
+        const redisClientBroker = new redisType(localRedisConnectionString);
+        const broker = new brokerType(redisClientBroker, store.purgeQueName);
+        const consumerGroup = await broker.joinConsumerGroup("MyGroup");
+        await consumerGroup.subscribe(consumerName, newMessageHandler, 15000, 1);
+
+        //Push for completed
+        setInterval(async () => {
+            let time = Date.now();
+            let qued = await store.purgeScan(35000, 10);
+            console.log(`=> T:${Date.now() - time} P:${qued.length}`);
+        }, 15000);
+
+        console.log(`${consumerName} is running in muted mode.`);
+        return null
+    }
+    else {
+        return consumerName;
+    }
+
 })()
     .then(consumerName => {
-        if (process.argv[2] === "Mute") {
-            console.log(`${consumerName} is running in muted mode.`)
-        }
-        else {
+        if (consumerName != null) {
             app.listen(port, () => {
                 console.log(`${consumerName} listening at http://localhost:${port}`);
-                setInterval(async () => {
-                    let time = Date.now();
-                    let qued = await store.purgeScan(35000, 10);
-                    console.log(`=> T:${Date.now() - time} P:${qued.length}`);
-                }, 15000);
-            })
+            });
         }
     });
