@@ -36,6 +36,7 @@
     "shortid": "^2.2.16"
   },
   "devDependencies": {
+    "compression": "^1.7.4",
     "concurrently": "^6.2.0",
     "express": "^4.17.1",
     "ioredis": "^4.27.6",

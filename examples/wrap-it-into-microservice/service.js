@@ -1,5 +1,6 @@
 //This is just a sample microservice
 const express = require('express')
+const compression = require('compression')
 const fs = require('fs').promises;
 const path = require('path');
 const redisType = require("ioredis");
@@ -12,8 +13,10 @@ const port = 3000
 const purgeLimit = 1//1e8;//~200MB
 const brokerType = require('redis-streams-broker').StreamChannelBroker;
 
-
 app.use(express.json());
+
+app.use(compression());
+
 
 app.post('/set', async (req, res) => {
     try {
