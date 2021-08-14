@@ -1077,7 +1077,7 @@ describe('Timeseries consumer tests', function () {
         const results = await redisClient.xrange(target._assembleKey(qName), markedPartitionsIds[0], markedPartitionsIds[0]);
         const parsedData = target.parsePurgePayload(results[0])
         const partitionKey = parsedData.partition;
-        const tagName = partitionKey.split(Seperator)[0];
+        const tagName = parsedData.key;
 
         //PURGE-ACK
         const returnValue = await target.purgeAck(markedPartitionsIds[0])

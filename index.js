@@ -35,7 +35,7 @@ class SortedStore {
         this._settingsHash = this._settingsHash.bind(this);
         this._assembleKey = this._assembleKey.bind(this);
         this._parseRedisData = this._parseRedisData.bind(this);
-        this._extractPartitionStart = this._extractPartitionStart.bind(this);
+        this._extractPartitionInfo = this._extractPartitionInfo.bind(this);
         this.readIndex = this.readIndex.bind(this);
         this.readPage = this.readPage.bind(this);
         this.purgeScan = this.purgeScan.bind(this);
@@ -241,7 +241,7 @@ class SortedStore {
             return Promise.reject(`Parameter "pagename" should be a valid string with characters not exceeding ${SafeKeyNameLength * 2}.`);
         }
         try {
-            partitionStart = this._extractPartitionStart(pagename);
+            partitionStart = this._extractPartitionInfo(pagename).start;
         }
         catch (error) {
             return Promise.reject(`Invalid 'pagename': ${error.message}`);
@@ -265,12 +265,14 @@ class SortedStore {
         return Promise.resolve(returnMap);
     }
 
-    _extractPartitionStart(partitionName) {
+    _extractPartitionInfo(partitionName) {
         const seperatorIndex = partitionName.lastIndexOf(Seperator);
         if (seperatorIndex < 0 || (seperatorIndex + 1) >= partitionName.length) {
             throw new Error("Seperator misplaced @" + seperatorIndex);
         }
-        return BigInt(partitionName.substring(seperatorIndex + 1));
+        const start = BigInt(partitionName.substring(seperatorIndex + 1));
+        const key = partitionName.substring(0, seperatorIndex);
+        return { "start": start, "key": key };
     }
 
     _parseRedisData(redisData, partitionStart, filter = () => true) {
@@ -340,9 +342,9 @@ class SortedStore {
 
     parsePurgePayload(payload) {
         const partitionName = payload[1][0];
-        const partitionStart = this._extractPartitionStart(partitionName);
+        const partitionInfo = this._extractPartitionInfo(partitionName);
         const data = JSON.parse(payload[1][1]);
-        return { "id": payload[0], "partition": partitionName, "data": this._parseRedisData(data, partitionStart) };
+        return { "id": payload[0], "partition": partitionName, "key": partitionInfo.key, "data": this._parseRedisData(data, partitionInfo.start) };
     }
 }
 
