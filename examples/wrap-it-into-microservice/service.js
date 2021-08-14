@@ -95,7 +95,7 @@ async function newMessageHandler(payloads) {
             fileData += `\r\n${k},${entryTime},${Buffer.from(String(v)).toString("base64")}`;
         });
         await fs.appendFile(path.join(__dirname, "/raw-db/", element.data.partition + ".txt"), fileData);
-        await store.purgeAck(element.id);
+        await store.purgeAck(element.id, element.data.partition, element.data.key);
         await element.markAsRead(true);
     });
     await Promise.all(multiWrites);
