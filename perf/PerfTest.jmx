@@ -72,7 +72,7 @@ Thread thread = Thread.currentThread();
 Date latestdate = new Date(); 
 def predefinedSamples = new HashMap&lt;String,Float&gt;();
 for(int timecounter = 0;timecounter&lt;10;timecounter++) { 
-   	predefinedSamples.put((new BigInteger(vars.get(&quot;Time&quot;))+(timecounter*10000)+&quot;&quot;), timecounter); 
+   	predefinedSamples.put((new BigInteger(vars.get(&quot;Time&quot;))+(timecounter*1000)+&quot;&quot;), timecounter); 
 }
 
 
