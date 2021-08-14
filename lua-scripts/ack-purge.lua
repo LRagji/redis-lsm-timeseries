@@ -1,14 +1,12 @@
 local recentActivityKey = KEYS[1]
 local purgeStreamKey = KEYS[2]
-local indexKey
+local partitionKey = KEYS[3]
+local indexKey = KEYS[4]
 local purgeAckId = ARGV[1]
-local seperator = ARGV[2]
-local spaceKey = ARGV[3]
 
 local data = redis.call('XRANGE',purgeStreamKey,purgeAckId,purgeAckId)
 if (#data > 0) then 
-    local cleanUpKey = data[1][2][1]
-    indexKey = string.sub(cleanUpKey,0,(string.find(cleanUpKey, (seperator.."[^"..seperator.."]*$"))-1))
+    local partitionKeyWithoutSpaceKey = data[1][2][1]
     local elements = cjson.decode(data[1][2][2])
 
     local membersToDelete = {}
@@ -17,11 +15,11 @@ if (#data > 0) then
     end
 
     if (#membersToDelete > 0) then
-        redis.call('ZREM',spaceKey .. seperator .. cleanUpKey,unpack(membersToDelete))
+        redis.call('ZREM',partitionKey,unpack(membersToDelete))
     end
 
-    if (redis.call('EXISTS',spaceKey .. seperator .. cleanUpKey) == 0) then
-        redis.call('ZREM', spaceKey .. seperator .. indexKey, cleanUpKey)
+    if (redis.call('EXISTS',partitionKey) == 0) then
+        redis.call('ZREM', indexKey, partitionKeyWithoutSpaceKey)
     end 
 
     return 1

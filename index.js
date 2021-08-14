@@ -323,15 +323,22 @@ class SortedStore {
         });
     }
 
-    async purgeAck(purgeId) {
+    async purgeAck(purgeId, partitionName, partitionKey) {
         if (this._epoch == null) {
             return Promise.reject("Please initialize the instance by calling 'initialize' first before any calls.");
         }
         if (purgeId == undefined || purgeId === "") {
             return Promise.reject("Invalid parameter 'purgeId'.");
         }
+        if (partitionName == undefined || partitionName === "") {
+            return Promise.reject("Invalid parameter 'partitionName'.");
+        }
+        if (partitionKey == undefined || partitionKey === "") {
+            return Promise.reject("Invalid parameter 'partitionKey'.");
+        }
+
         return new Promise((acc, rej) => {
-            this._scriptManager.run(scriptNamePurgeAck, [this._assembleKey(RecentAcitivityKey), this.purgeQueName], [purgeId, Seperator, this.SettingsHash], (err, result) => {
+            this._scriptManager.run(scriptNamePurgeAck, [this._assembleKey(RecentAcitivityKey), this.purgeQueName, this._assembleKey(partitionName), this._assembleKey(partitionKey)], [purgeId], (err, result) => {
                 if (err !== null) {
                     return rej(err);
                 }

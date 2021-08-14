@@ -867,11 +867,12 @@ describe('Timeseries consumer tests', function () {
 
         //GET Purged Details
         const results = await redisClient.xrange(target._assembleKey(qName), markedPartitionsIds[0], markedPartitionsIds[0]);
-        const partitionKey = results[0][1][0]
-        const tagName = partitionKey.split(Seperator)[0];
+        const parsedData = target.parsePurgePayload(results[0])
+        const partitionKey = parsedData.partition;
+        const tagName = parsedData.key;
 
         //PURGE-ACK
-        const returnValue = await target.purgeAck(markedPartitionsIds[0])
+        const returnValue = await target.purgeAck(markedPartitionsIds[0], partitionKey, tagName)
         const partitionKeyExists = await redisClient.exists(target._assembleKey(partitionKey));
         const recentActivityContainsPartitionKey = await redisClient.zrank(target._assembleKey(recentActivityKey), partitionKey);
         const indexKeyExists = await redisClient.exists(target._assembleKey(tagName));
@@ -959,11 +960,12 @@ describe('Timeseries consumer tests', function () {
 
         //GET Purged Details
         const results = await redisClient.xrange(target._assembleKey(qName), markedPartitionsIds[0], markedPartitionsIds[0]);
-        const partitionKey = results[0][1][0]
-        const tagName = partitionKey.split(Seperator)[0];
+        const parsedData = target.parsePurgePayload(results[0])
+        const partitionKey = parsedData.partition;
+        const tagName = parsedData.key;
 
         //PURGE-ACK
-        const returnValue = await target.purgeAck(markedPartitionsIds[0])
+        const returnValue = await target.purgeAck(markedPartitionsIds[0], partitionKey, tagName)
         const partitionKeyExists = await redisClient.exists(target._assembleKey(partitionKey));
         const recentActivityContainsPartitionKey = await redisClient.zrank(target._assembleKey(recentActivityKey), partitionKey);
         const indexKeyExists = await redisClient.exists(target._assembleKey(tagName));
@@ -1008,11 +1010,12 @@ describe('Timeseries consumer tests', function () {
 
         //GET Purged Details
         const results = await redisClient.xrange(target._assembleKey(qName), markedPartitionsIds[0], markedPartitionsIds[0]);
-        const partitionKey = results[0][1][0]
-        const tagName = partitionKey.split(Seperator)[0];
+        const parsedData = target.parsePurgePayload(results[0])
+        const partitionKey = parsedData.partition;
+        const tagName = parsedData.key;
 
         //PURGE-ACK
-        const returnValue = await target.purgeAck(markedPartitionsIds[0])
+        const returnValue = await target.purgeAck(markedPartitionsIds[0], partitionKey, tagName)
         const partitionKeyExists = await redisClient.exists(target._assembleKey(partitionKey));
         const recentActivityContainsPartitionKey = await redisClient.zrank(target._assembleKey(recentActivityKey), partitionKey);
         const indexKeyExists = await redisClient.exists(target._assembleKey(tagName));
@@ -1053,6 +1056,28 @@ describe('Timeseries consumer tests', function () {
 
     });
 
+    it('Should not allow to purge ack partition when invalid parameter partitionName is passed', async function () {
+
+        //SETUP
+        await target.initialize()
+
+        //VERIFY
+        await assert.rejects(() => target.purgeAck("mockey"), err => assert.strictEqual(err, `Invalid parameter 'partitionName'.`) == undefined);
+        await assert.rejects(() => target.purgeAck("mockkey", ""), err => assert.strictEqual(err, `Invalid parameter 'partitionName'.`) == undefined);
+
+    });
+
+    it('Should not allow to purge ack partition when invalid parameter partitionKey is passed', async function () {
+
+        //SETUP
+        await target.initialize()
+
+        //VERIFY
+        await assert.rejects(() => target.purgeAck("mockkey", "mockkey"), err => assert.strictEqual(err, `Invalid parameter 'partitionKey'.`) == undefined);
+        await assert.rejects(() => target.purgeAck("mockkey", "mockkey", ""), err => assert.strictEqual(err, `Invalid parameter 'partitionKey'.`) == undefined);
+
+    });
+
     it('Should parse partition data after purge scan when correct parameters are presented.', async function () {
 
         //SETUP
@@ -1080,7 +1105,7 @@ describe('Timeseries consumer tests', function () {
         const tagName = parsedData.key;
 
         //PURGE-ACK
-        const returnValue = await target.purgeAck(markedPartitionsIds[0])
+        const returnValue = await target.purgeAck(markedPartitionsIds[0], partitionKey, tagName)
         const partitionKeyExists = await redisClient.exists(target._assembleKey(partitionKey));
         const recentActivityContainsPartitionKey = await redisClient.zrank(target._assembleKey(recentActivityKey), partitionKey);
         const indexKeyExists = await redisClient.exists(target._assembleKey(tagName));
