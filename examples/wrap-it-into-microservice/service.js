@@ -12,6 +12,7 @@ const app = express()
 const port = 3000
 const purgeLimit = 1//1e8;//~200MB
 const brokerType = require('redis-streams-broker').StreamChannelBroker;
+const HotHoldTime = 120 * 1000;
 
 app.use(express.json());
 
@@ -97,28 +98,40 @@ async function newMessageHandler(payloads) {
         await fs.appendFile(path.join(__dirname, "/raw-db/", element.data.partition + ".txt"), fileData);
         await store.purgeAck(element.id, element.data.partition, element.data.key);
         await element.markAsRead(true);
+        return element.data.data.size;
     });
-    await Promise.all(multiWrites);
-    console.log(`<= T:${Date.now() - time} P:${payloads.length} #`);
+    let samplesWritten = await Promise.all(multiWrites);
+    samplesWritten = samplesWritten.reduce((acc, e) => acc + e);
+    console.log(`<= T:${Date.now() - time} P:${payloads.length} S:${samplesWritten} #`);
     //await store.purgeScan(5000, 5000);
 }
 
+let previousDate = Date.now();
+let previousDBSize = 0;
+
 //Startup
 (async () => {
-    await store.initialize(30000);
+    await store.initialize();
     const consumerName = `C-${store.instanceName}`;
     if (process.argv[2] === "Mute") {
         const redisClientBroker = new redisType(localRedisConnectionString);
         const broker = new brokerType(redisClientBroker, store.purgeQueName);
         const consumerGroup = await broker.joinConsumerGroup("MyGroup");
-        await consumerGroup.subscribe(consumerName, newMessageHandler, 15000, 1);
+        await consumerGroup.subscribe(consumerName, newMessageHandler, HotHoldTime / 4, 1000);
 
         //Push for completed
         setInterval(async () => {
             let time = Date.now();
-            let qued = await store.purgeScan(35000, 10);
-            console.log(`=> T:${Date.now() - time} P:${qued.length}`);
-        }, 15000);
+            const dbSize = await redisClient.dbsize();
+            let qued = await store.purgeScan(HotHoldTime + 3000, 10000);
+            let partitionPurgeRate = "";
+            if (previousDBSize != 0) {
+                partitionPurgeRate = ((dbSize - previousDBSize) / (time - previousDate)) * HotHoldTime
+            }
+            previousDBSize = dbSize;
+            previousDate = time;
+            console.log(`=> T:${Date.now() - previousDate} P:${qued.length} Rate:${partitionPurgeRate}`);
+        }, (HotHoldTime / 4) + 3000);
 
         console.log(`${consumerName} is running in muted mode.`);
         return null
