@@ -43,7 +43,7 @@ class SortedStore {
         this.parsePurgePayload = this.parsePurgePayload.bind(this);
     }
 
-    async initialize(orderedPartitionWidth = 86400000n, purgeQueName = "Purge") {
+    async initialize(orderedPartitionWidth = 120000n, purgeQueName = "Purge") {
         this._orderedPartitionWidth = BigInt(orderedPartitionWidth);
         this.SettingsHash = this._settingsHash({ "version": 1.0, "partitionWidth": this._orderedPartitionWidth.toString(), "purgeQueName": purgeQueName });
         this.purgeQueName = this._assembleKey(purgeQueName);
