@@ -31,7 +31,7 @@ describe('Timeseries consumer tests', function () {
     it('Should fail with initialization exception when EPOCH is set to invalid', async function () {
 
         //SETUP
-        let hash = Crypto.createHash("sha256").update(JSON.stringify({ "version": 1.0, "partitionWidth": 86400000n.toString(), "purgeQueName": 'Purge' }), "binary").digest("hex")
+        let hash = Crypto.createHash("sha256").update(JSON.stringify({ "version": 1.0, "partitionWidth": 120000n.toString(), "purgeQueName": 'Purge' }), "binary").digest("hex")
         await redisClient.set(hash + "-EPOCH", "Laukik");//This is to simulate key is set but not epoch i.e:Timestamp ;
 
         //VERIFY
