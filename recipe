@@ -45,3 +45,4 @@ The current write implementation doesnot look at if the redis full or not we sho
 Even the EnQuePurge function doesnot look at memory it just works on time we need to purge accordingly.(idea)
 Write api to accept a paramter for returning size defaulted to false so that we dont make info call everytime.(TODO)
 Write call optimization with batching all insert commands into transactions.(idea)
+To speed up try to remove promise.resolve from end of function.(idea)
