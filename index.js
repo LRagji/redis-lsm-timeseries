@@ -230,7 +230,7 @@ class SortedStore {
         return Promise.resolve(pages);
     }
 
-    async readPage(pagename, start, end) {
+    async readPage(pagename, filter = sortKey => true) {
         let partitionStart;
 
         if (this._epoch == null) {
@@ -246,21 +246,13 @@ class SortedStore {
         catch (error) {
             return Promise.reject(`Invalid 'pagename': ${error.message}`);
         };
-        try {
-            start = BigInt(start);
+
+        if ({}.toString.call(filter) !== '[object Function]') {
+            return Promise.reject(`Invalid parameter "filter" should be a function.`);
         }
-        catch (error) {
-            return Promise.reject(`Invalid start range for ${pagename}: ${error.message}`);
-        };
-        try {
-            end = BigInt(end);
-        }
-        catch (error) {
-            return Promise.reject(`Invalid end range for ${pagename}: ${error.message}`);
-        };
 
         const response = await this._redisClient.zrange(this._assembleKey(pagename), 0, -1, WITHSCORES);
-        const returnMap = this._parseRedisData(response, partitionStart, (sortKey) => start <= sortKey && sortKey <= end);
+        const returnMap = this._parseRedisData(response, partitionStart, filter);
 
         return Promise.resolve(returnMap);
     }

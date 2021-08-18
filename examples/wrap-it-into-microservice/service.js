@@ -62,7 +62,7 @@ async function readData(ranges) {
     pages.forEach((pages, partitionName) => {
         pages.forEach((page) => {
             asyncCommands.push((async () => {
-                const sortedMap = await store.readPage(page.page, page.start, page.end);
+                const sortedMap = await store.readPage(page.page, (sortKey) => page.start <= sortKey && sortKey <= page.end);
                 return new Map([[partitionName, sortedMap]]);
             })());
         });

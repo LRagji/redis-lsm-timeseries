@@ -717,21 +717,12 @@ describe('Timeseries consumer tests', function () {
 
     });
 
-    it('Should not allow readPage when incorrect range is specified', async function () {
+    it('Should not allow readPage when incorrect filter parameter is specified', async function () {
         //SETUP
         await target.initialize();
 
-        //VERIFY when start is null
-        await assert.rejects(() => target.readPage("Laukik-9", null, 0), err => assert.strictEqual(err, `Invalid start range for Laukik-9: Cannot convert null to a BigInt`) == undefined);
-
-        //VERIFY when end is null
-        await assert.rejects(() => target.readPage("Laukik-8", 0, null), err => assert.strictEqual(err, `Invalid end range for Laukik-8: Cannot convert null to a BigInt`) == undefined);
-
-        //VERIFY when it is text
-        await assert.rejects(() => target.readPage("Laukik-9", "laukkik", 0), err => assert.strictEqual(err, `Invalid start range for Laukik-9: Cannot convert laukkik to a BigInt`) == undefined);
-
-        //VERIFY when it is float
-        await assert.rejects(() => target.readPage("Laukik-9", 0.3, 0), err => assert.strictEqual(err, `Invalid start range for Laukik-9: The number 0.3 cannot be converted to a BigInt because it is not an integer`) == undefined);
+        //VERIFY when filter is not function
+        await assert.rejects(() => target.readPage("Laukik-9", 0), err => assert.strictEqual(err, `Invalid parameter "filter" should be a function.`) == undefined);
 
     });
 
@@ -1141,7 +1132,7 @@ async function readData(ranges) {
     pages.forEach((pages, partitionName) => {
         pages.forEach((page) => {
             asyncCommands.push((async () => {
-                const sortedMap = await target.readPage(page.page, page.start, page.end);
+                const sortedMap = await target.readPage(page.page, (sortKey) => page.start <= sortKey && sortKey <= page.end);
                 return new Map([[partitionName, sortedMap]]);
             })());
         });
