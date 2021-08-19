@@ -16,6 +16,7 @@ const SafeKeyNameLength = 200;
 const WITHSCORES = "WITHSCORES";
 const scriptNameEnquePurge = "enqueue-purge";
 const scriptNamePurgeAck = "ack-purge";
+const Accumalating = "acc";
 
 class SortedStore {
 
@@ -119,7 +120,7 @@ class SortedStore {
                     }
                     sortKey = BigInt(sortKey);
                     const partitionStart = sortKey - (sortKey % this._orderedPartitionWidth);
-                    const partitionName = `${partitionKey}${Seperator}${partitionStart}`;
+                    const partitionName = `${partitionKey}${Seperator}${partitionStart}${Seperator}${Accumalating}`;
                     const serializedItem = JSON.stringify({ 'p': item, 'u': `${sampleIngestionTime}-${this.instanceName}-${itemCounter}` });
                     const relativeKeyFromPartitionStart = sortKey - partitionStart;
                     const epochRelativePartitionStart = this._epoch - partitionStart;
@@ -258,7 +259,9 @@ class SortedStore {
     }
 
     _extractPartitionInfo(partitionName) {
-        const seperatorIndex = partitionName.lastIndexOf(Seperator);
+        let seperatorIndex = partitionName.lastIndexOf(Seperator);
+        partitionName = partitionName.substring(0, seperatorIndex);
+        seperatorIndex = partitionName.lastIndexOf(Seperator);
         if (seperatorIndex < 0 || (seperatorIndex + 1) >= partitionName.length) {
             throw new Error("Seperator misplaced @" + seperatorIndex);
         }

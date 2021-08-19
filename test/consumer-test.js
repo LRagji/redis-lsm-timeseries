@@ -108,6 +108,7 @@ describe('Timeseries consumer tests', function () {
         const partitionWidth = 10;
         const recentActivityKey = "RecentActivity";
         const Seperator = "-";
+        const acquiringFlag = "acc";
         const EPOCH = parseInt(await target.initialize(partitionWidth));
         let orderedData = new Map();
         let startDate = Date.now();
@@ -135,7 +136,7 @@ describe('Timeseries consumer tests', function () {
             for (let sampleCounter = 0; sampleCounter < samples.length; sampleCounter++) {
                 let sample = samples[sampleCounter];
                 const partitionStart = sample.t - (sample.t % partitionWidth);
-                const partitionName = `${tagName}${Seperator}${partitionStart}`;
+                const partitionName = `${tagName}${Seperator}${partitionStart}${Seperator}${acquiringFlag}`;
                 const score = sample.t - partitionStart;
                 let errorMessage = `${partitionName} for score ${score} `;
                 //Data
@@ -180,7 +181,7 @@ describe('Timeseries consumer tests', function () {
 
         //Data
         const partitionStart = SampleOneTimestamp - (SampleOneTimestamp % partitionWidth);
-        const partitionName = "GapTag" + Seperator + partitionStart.toString();
+        const partitionName = "GapTag" + Seperator + partitionStart.toString() + Seperator + "acc";
         const partitionKey = target._assembleKey(partitionName);
         const partionShouldExists = await redisClient.exists(partitionKey);
         assert.strictEqual(partionShouldExists, 1);
@@ -241,7 +242,7 @@ describe('Timeseries consumer tests', function () {
 
         //Data
         const partitionStart = SampleOneTimestamp - (SampleOneTimestamp % partitionWidth);
-        const partitionName = "GapTag" + Seperator + partitionStart.toString();
+        const partitionName = "GapTag" + Seperator + partitionStart.toString() + Seperator + "acc";
         const partitionKey = target._assembleKey(partitionName);
         const partionShouldExists = await redisClient.exists(partitionKey);
         assert.strictEqual(partionShouldExists, 1);
@@ -305,7 +306,7 @@ describe('Timeseries consumer tests', function () {
 
         //Data
         const partitionStart = SampleOneTimestamp - (SampleOneTimestamp % partitionWidth);
-        const partitionName = "GapTag" + Seperator + partitionStart.toString();
+        const partitionName = "GapTag" + Seperator + partitionStart.toString() + Seperator + "acc";
         const partitionKey = target._assembleKey(partitionName);
         const partionShouldExists = await redisClient.exists(partitionKey);
         assert.strictEqual(partionShouldExists, 1);
@@ -372,7 +373,7 @@ describe('Timeseries consumer tests', function () {
         //VERIFY
         ranges.forEach((range, key) => {
             const currentPage = pages.get(key);
-            const expected = Array.from(pageSets).map(e => `${key}-${e}`).reverse();
+            const expected = Array.from(pageSets).map(e => `${key}-${e}-acc`).reverse();
             assert.notStrictEqual(undefined, currentPage, `Page not found for ${key} between ${range.start} to ${range.end}.`);
             assert.deepStrictEqual(currentPage.map(e => e.page), expected, `Not all pages found E:${expected} A:${currentPage} for ${key} between ${range.start} to ${range.end}.`);
             //Verify weight odering.
@@ -713,7 +714,7 @@ describe('Timeseries consumer tests', function () {
         await assert.rejects(() => target.readPage("Laukik", 0, 0), err => assert.strictEqual(err, `Invalid 'pagename': Seperator misplaced @-1`) == undefined);
 
         //VERIFY when pagename has seperator towards end
-        await assert.rejects(() => target.readPage("Laukik-", 0, 0), err => assert.strictEqual(err, `Invalid 'pagename': Seperator misplaced @6`) == undefined);
+        await assert.rejects(() => target.readPage("Laukik-", 0, 0), err => assert.strictEqual(err, `Invalid 'pagename': Seperator misplaced @-1`) == undefined);
 
     });
 
@@ -722,7 +723,7 @@ describe('Timeseries consumer tests', function () {
         await target.initialize();
 
         //VERIFY when filter is not function
-        await assert.rejects(() => target.readPage("Laukik-9", 0), err => assert.strictEqual(err, `Invalid parameter "filter" should be a function.`) == undefined);
+        await assert.rejects(() => target.readPage("Laukik-9-acc", 0), err => assert.strictEqual(err, `Invalid parameter "filter" should be a function.`) == undefined);
 
     });
 
