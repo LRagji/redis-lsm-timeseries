@@ -46,3 +46,4 @@ Even the EnQuePurge function doesnot look at memory it just works on time we nee
 Write api to accept a paramter for returning size defaulted to false so that we dont make info call everytime.(TODO)
 Write call optimization with batching all insert commands into transactions.(idea)
 To speed up try to remove promise.resolve from end of function.(idea)
+User cannot have save tag names like "Pend", "RecentActivity" as they clash with system need to include validation for the same in write api and make it user configurable.
