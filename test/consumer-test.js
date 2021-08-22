@@ -767,73 +767,117 @@ describe('Timeseries consumer tests', function () {
         inputData.set("GapTag", new Map([[1, "One"], [2, "Two"], [10, "Ten"], [20, "Twenty"]]));
         inputData.set("SerialTag", new Map([[1, "One"], [2, "Two"], [3, "Three"], [4, "Four"]]));
 
-        await target.initialize(partitionWidth, qName);
+        await target.initialize(partitionWidth);
 
         //WRITE
         const bytes = await target.write(inputData);
 
+        //Killtime
+        await new Promise((acc, rej) => setTimeout(acc, 5000));
         //PURGE
-        const markedPartitionsIds = await target.purgeScan(1, 10);
-
+        const acquiredPartitions = await target.purgeAcquire(1, 10, 1000);
         //VERIFY
         assert.deepStrictEqual(bytes > 1n, true);
-        assert.deepStrictEqual(markedPartitionsIds.length === 4, true, `A:${markedPartitionsIds.length} E:${4}`);
-        const actual = new Map();
-        for (let index = 0; index < markedPartitionsIds.length; index++) {
-            let results = await redisClient.xrange(target._assembleKey(qName), markedPartitionsIds[index], markedPartitionsIds[index]);
-            const tagName = results[0][1][0].split(Seperator)[0];
-            let members = actual.get(tagName) || []
-            members.push(...((JSON.parse(results[0][1][1])).map(e => JSON.parse(e).p).filter(e => e != undefined)));
-            actual.set(tagName, members);
-        }
-        assert.deepStrictEqual(actual.get("GapTag"), ['One', 'Two', 'Ten', 'Twenty']);
-        assert.deepStrictEqual(actual.get("SerialTag"), ['One', 'Two', 'Three', 'Four']);
-    });
+        assert.deepStrictEqual(acquiredPartitions.length === 4, true, `A:${acquiredPartitions.length} E:${4}`);
+
+        assert.deepStrictEqual(acquiredPartitions[0], {
+            start: 0n,
+            key: 'GapTag',
+            name: 'GapTag-0-pur',
+            purgeReleaseToken: `["GapTag-0-pur",["${target.instanceName}"]]`,
+            history: [target.instanceName],
+            partitionData: new Map([[1, 'One'], [2, 'Two']])
+        });
+        assert.deepStrictEqual(acquiredPartitions[1], {
+            start: 10n,
+            key: 'GapTag',
+            name: 'GapTag-10-pur',
+            purgeReleaseToken: `["GapTag-10-pur",["${target.instanceName}"]]`,
+            history: [target.instanceName],
+            partitionData: new Map([[10, 'Ten']])
+        });
+        assert.deepStrictEqual(acquiredPartitions[2], {
+            start: 20n,
+            key: 'GapTag',
+            name: 'GapTag-20-pur',
+            purgeReleaseToken: `["GapTag-20-pur",["${target.instanceName}"]]`,
+            history: [target.instanceName],
+            partitionData: new Map([[20, 'Twenty']])
+        });
+        assert.deepStrictEqual(acquiredPartitions[3], {
+            start: 0n,
+            key: 'SerialTag',
+            name: 'SerialTag-0-pur',
+            purgeReleaseToken: `["SerialTag-0-pur",["${target.instanceName}"]]`,
+            history: [target.instanceName],
+            partitionData: new Map([[1, 'One'], [2, 'Two'], [3, 'Three'], [4, 'Four']])
+        });
+    }).timeout(-1);
 
     it('Should not allow to mark partition for purging when not initialized', async function () {
 
         //VERIFY
-        await assert.rejects(() => target.purgeScan(), err => assert.strictEqual(err, "Please initialize the instance by calling 'initialize' first before any calls.") == undefined);
+        await assert.rejects(() => target.purgeAcquire(), err => assert.strictEqual(err, "Please initialize the instance by calling 'initialize' first before any calls.") == undefined);
 
     });
 
-    it('Should not allow to mark partition for purging when partitionAgeThreshold is not valid', async function () {
+    it('Should not allow to mark partition for purging when partitionAgeThresholdInSeconds is not valid', async function () {
 
         //SETUP
         await target.initialize();
 
         //VERIFY
-        await assert.rejects(() => target.purgeScan("ladsa"), err => assert.strictEqual(err, "Parameter 'partitionAgeThreshold' is invalid: Cannot convert ladsa to a BigInt") == undefined);
+        await assert.rejects(() => target.purgeAcquire("ladsa"), err => assert.strictEqual(err, "Parameter 'partitionAgeThresholdInSeconds' is invalid: Cannot convert ladsa to a BigInt") == undefined);
 
     });
 
-    it('Should not allow to mark partition for purging when maxPartitionsToMark is not valid', async function () {
+    it('Should not allow to mark partition for purging when maxPartitionsToAcquire is not valid', async function () {
 
         //SETUP
         await target.initialize();
 
         //VERIFY
-        await assert.rejects(() => target.purgeScan(0, "ladlf"), err => assert.strictEqual(err, "Parameter 'maxPartitionsToMark' is invalid: Cannot convert ladlf to a BigInt") == undefined);
+        await assert.rejects(() => target.purgeAcquire(0, "ladlf"), err => assert.strictEqual(err, "Parameter 'maxPartitionsToAcquire' is invalid: Cannot convert ladlf to a BigInt") == undefined);
 
     });
 
-    it('Should not allow to mark partition for purging when partitionAgeThreshold is zero or less', async function () {
+    it('Should not allow to mark partition for purging when partitionAgeThresholdInSeconds is zero or less', async function () {
 
         //SETUP
         await target.initialize();
 
         //VERIFY
-        await assert.rejects(() => target.purgeScan(0), err => assert.strictEqual(err, "Parameter 'partitionAgeThreshold' is invalid & should greater than 1.") == undefined);
+        await assert.rejects(() => target.purgeAcquire(0), err => assert.strictEqual(err, "Parameter 'partitionAgeThresholdInSeconds' is invalid & should greater than 1.") == undefined);
 
     });
 
-    it('Should not allow to mark partition for purging when maxPartitionsToMark is zero or less', async function () {
+    it('Should not allow to mark partition for purging when maxPartitionsToAcquire is zero or less', async function () {
 
         //SETUP
         await target.initialize();
 
         //VERIFY
-        await assert.rejects(() => target.purgeScan(undefined, 0), err => assert.strictEqual(err, "Parameter 'maxPartitionsToMark' is invalid & should greater than 1.") == undefined);
+        await assert.rejects(() => target.purgeAcquire(undefined, 0), err => assert.strictEqual(err, "Parameter 'maxPartitionsToAcquire' is invalid & should greater than 1.") == undefined);
+
+    });
+
+    it('Should not allow to mark partition for purging when releaseTimeoutSeconds is not valid', async function () {
+
+        //SETUP
+        await target.initialize();
+
+        //VERIFY
+        await assert.rejects(() => target.purgeAcquire(undefined, undefined, "ladlf"), err => assert.strictEqual(err, "Parameter 'releaseTimeoutSeconds' is invalid: Cannot convert ladlf to a BigInt") == undefined);
+
+    });
+
+    it('Should not allow to mark partition for purging when releaseTimeoutSeconds is zero or less', async function () {
+
+        //SETUP
+        await target.initialize();
+
+        //VERIFY
+        await assert.rejects(() => target.purgeAcquire(undefined, undefined, 0), err => assert.strictEqual(err, "Parameter 'releaseTimeoutSeconds' is invalid & should greater than 1.") == undefined);
 
     });
 

@@ -65,3 +65,4 @@ return acquiredPartitions
 -- docker run with -v ${PWD}:\"/var/lib/mysql\"
 -- cd /var/lib/mysql/lua-scripts
 -- redis-cli --eval purge-acquire.lua space-rac space-pen , 1 0 1 10 token1 space - pur
+-- Stringyfied Response [["[\"GapTag-0-pur\",[\"2b8pjZTY>G\"]]",["{\"p\":\"One\",\"u\":\"1629634010341-2b8pjZTY>G-0\"}","1","{\"p\":\"Two\",\"u\":\"1629634010341-2b8pjZTY>G-1\"}","2"]],["[\"GapTag-10-pur\",[\"2b8pjZTY>G\"]]",["{\"p\":\"Ten\",\"u\":\"1629634010341-2b8pjZTY>G-2\"}","0"]],["[\"GapTag-20-pur\",[\"2b8pjZTY>G\"]]",["{\"p\":\"Twenty\",\"u\":\"1629634010341-2b8pjZTY>G-3\"}","0"]],["[\"SerialTag-0-pur\",[\"2b8pjZTY>G\"]]",["{\"p\":\"One\",\"u\":\"1629634010341-2b8pjZTY>G-4\"}","1","{\"p\":\"Two\",\"u\":\"1629634010341-2b8pjZTY>G-5\"}","2","{\"p\":\"Three\",\"u\":\"1629634010341-2b8pjZTY>G-6\"}","3","{\"p\":\"Four\",\"u\":\"1629634010341-2b8pjZTY>G-7\"}","4"]]]

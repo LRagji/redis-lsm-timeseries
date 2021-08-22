@@ -16,7 +16,9 @@ const SafeKeyNameLength = 200;
 const WITHSCORES = "WITHSCORES";
 const scriptNamePurgeAcquire = "purge-acquire";
 const scriptNamePurgeAck = "ack-purge";
-const Accumalating = "acc";
+const AccumalatingFlag = "acc";
+const PendingPurgeKey = "Pen"
+const PurgeFlag = "pur"
 
 class SortedStore {
 
@@ -119,7 +121,7 @@ class SortedStore {
                     }
                     sortKey = BigInt(sortKey);
                     const partitionStart = sortKey - (sortKey % this._orderedPartitionWidth);
-                    const partitionName = `${partitionKey}${Seperator}${partitionStart}${Seperator}${Accumalating}`;
+                    const partitionName = `${partitionKey}${Seperator}${partitionStart}${Seperator}${AccumalatingFlag}`;
                     const serializedItem = JSON.stringify({ 'p': item, 'u': `${sampleIngestionTime}-${this.instanceName}-${itemCounter}` });
                     const relativeKeyFromPartitionStart = sortKey - partitionStart;
                     const epochRelativePartitionStart = this._epoch - partitionStart;
@@ -281,7 +283,7 @@ class SortedStore {
         return returnMap;
     }
 
-    async purgeAcquire(partitionAgeThresholdInSeconds = 300, maxPartitionsToAcquire = 10) {
+    async purgeAcquire(partitionAgeThresholdInSeconds = 300, maxPartitionsToAcquire = 10, releaseTimeoutSeconds = 100) {
 
         if (this._epoch == null) {
             return Promise.reject("Please initialize the instance by calling 'initialize' first before any calls.");
@@ -299,26 +301,70 @@ class SortedStore {
         catch (err) {
             return Promise.reject("Parameter 'maxPartitionsToAcquire' is invalid: " + err.message);
         }
+        try {
+            releaseTimeoutSeconds = BigInt(releaseTimeoutSeconds);
+        }
+        catch (err) {
+            return Promise.reject("Parameter 'releaseTimeoutSeconds' is invalid: " + err.message);
+        }
 
         if (partitionAgeThresholdInSeconds <= 0) {
             return Promise.reject("Parameter 'partitionAgeThresholdInSeconds' is invalid & should greater than 1.")
         }
+
         if (maxPartitionsToAcquire <= 0) {
             return Promise.reject("Parameter 'maxPartitionsToAcquire' is invalid & should greater than 1.")
         }
 
+        if (releaseTimeoutSeconds <= 0) {
+            return Promise.reject("Parameter 'releaseTimeoutSeconds' is invalid & should greater than 1.")
+        }
         const keys = [
-            this._assembleKey(RecentAcitivityKey)
-        ]
+            this._assembleKey(RecentAcitivityKey),
+            this._assembleKey(PendingPurgeKey)
+        ];
+        const args = [
+            partitionAgeThresholdInSeconds,
+            (this._epoch / 1000n),
+            maxPartitionsToAcquire,
+            releaseTimeoutSeconds,
+            this.instanceName,
+            this.instanceHash,
+            Seperator,
+            PurgeFlag
+        ];
 
-        return new Promise((acc, rej) => {
-            this._scriptManager.run(scriptNamePurgeAcquire, [, this.purgeQueName], [partitionAgeThreshold, this._epoch, maxPartitionsToMark, (this.instanceHash + Seperator)], (err, result) => {
+        const acquiredData = await new Promise((acc, rej) => {
+            this._scriptManager.run(scriptNamePurgeAcquire, keys, args, (err, result) => {
                 if (err !== null) {
                     return rej(err);
                 }
                 acc(result);
             });
         });
+
+        return acquiredData.map(serializedData => {
+            let acquiredPartitionInfo = JSON.parse(serializedData[0]);
+            const acquiredPartitionName = acquiredPartitionInfo[0];
+            const acquiredPartitionLog = acquiredPartitionInfo[1];
+            acquiredPartitionInfo = this._extractPartitionInfo(acquiredPartitionName);
+            acquiredPartitionInfo.name = acquiredPartitionName;
+            acquiredPartitionInfo.purgeReleaseToken = serializedData[0];
+            acquiredPartitionInfo.history = acquiredPartitionLog;
+            acquiredPartitionInfo.partitionData = this._parseRedisData(serializedData[1], acquiredPartitionInfo.start);
+            return acquiredPartitionInfo;
+        });
+
+        // [
+        //     {
+        //         start: 0n,
+        //         key: 'SerialTag',
+        //         name: 'SerialTag-0-pur',
+        //         purgeReleaseToken: '["SerialTag-0-pur",["LJPiT520WP"]]',
+        //         history: [ 'LJPiT520WP' ],
+        //         partitionData: Map { 1 => 'One', 2 => 'Two', 3 => 'Three', 4 => 'Four' }
+        //       }
+        // ]
     }
 
     async purgeRelease(purgeId, partitionName, partitionKey) {
