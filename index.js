@@ -14,14 +14,14 @@ const safeIndexedTagsRead = 100;
 const RecentAcitivityKey = "RecentActivity";
 const SafeKeyNameLength = 200;
 const WITHSCORES = "WITHSCORES";
-const scriptNameEnquePurge = "enqueue-purge";
+const scriptNamePurgeAcquire = "purge-acquire";
 const scriptNamePurgeAck = "ack-purge";
 const Accumalating = "acc";
 
 class SortedStore {
 
-    purgeQueName
     instanceName
+    instanceHash
 
     constructor(redisClient, scriptManager = new Scripto(redisClient)) {
         this._scriptManager = scriptManager;
@@ -39,15 +39,14 @@ class SortedStore {
         this._extractPartitionInfo = this._extractPartitionInfo.bind(this);
         this.readIndex = this.readIndex.bind(this);
         this.readPage = this.readPage.bind(this);
-        this.purgeScan = this.purgeScan.bind(this);
-        this.purgeAck = this.purgeAck.bind(this);
+        this.purgeAcquire = this.purgeAcquire.bind(this);
+        this.purgeRelease = this.purgeRelease.bind(this);
         this.parsePurgePayload = this.parsePurgePayload.bind(this);
     }
 
-    async initialize(orderedPartitionWidth = 120000n, purgeQueName = "Purge") {
+    async initialize(orderedPartitionWidth = 120000n) {
         this._orderedPartitionWidth = BigInt(orderedPartitionWidth);
-        this.SettingsHash = this._settingsHash({ "version": 1.0, "partitionWidth": this._orderedPartitionWidth.toString(), "purgeQueName": purgeQueName });
-        this.purgeQueName = this._assembleKey(purgeQueName);
+        this.instanceHash = this._settingsHash({ "version": 1.0, "partitionWidth": this._orderedPartitionWidth.toString() });
         await this._redisClient.set(this._assembleKey(EPOCHKey), Date.now().toString(DecimalRadix), SetOptionDonotOverwrite);
         this._epoch = await this._redisClient.get(this._assembleKey(EPOCHKey));
         this._epoch = parseInt(this._epoch, DecimalRadix);
@@ -152,7 +151,7 @@ class SortedStore {
     }
 
     _assembleKey(key) {
-        return `${this.SettingsHash}${Seperator}${key}`;
+        return `${this.instanceHash}${Seperator}${key}`;
     }
 
     async readIndex(partitionRanges) {
@@ -282,34 +281,38 @@ class SortedStore {
         return returnMap;
     }
 
-    async purgeScan(partitionAgeThreshold = 300, maxPartitionsToMark = 10) {
+    async purgeAcquire(partitionAgeThresholdInSeconds = 300, maxPartitionsToAcquire = 10) {
 
         if (this._epoch == null) {
             return Promise.reject("Please initialize the instance by calling 'initialize' first before any calls.");
         }
 
         try {
-            partitionAgeThreshold = BigInt(partitionAgeThreshold);
+            partitionAgeThresholdInSeconds = BigInt(partitionAgeThresholdInSeconds);
         }
         catch (err) {
-            return Promise.reject("Parameter 'partitionAgeThreshold' is invalid: " + err.message);
+            return Promise.reject("Parameter 'partitionAgeThresholdInSeconds' is invalid: " + err.message);
         }
         try {
-            maxPartitionsToMark = BigInt(maxPartitionsToMark);
+            maxPartitionsToAcquire = BigInt(maxPartitionsToAcquire);
         }
         catch (err) {
-            return Promise.reject("Parameter 'maxPartitionsToMark' is invalid: " + err.message);
+            return Promise.reject("Parameter 'maxPartitionsToAcquire' is invalid: " + err.message);
         }
 
-        if (partitionAgeThreshold <= 0) {
-            return Promise.reject("Parameter 'partitionAgeThreshold' is invalid & should greater than 1.")
+        if (partitionAgeThresholdInSeconds <= 0) {
+            return Promise.reject("Parameter 'partitionAgeThresholdInSeconds' is invalid & should greater than 1.")
         }
-        if (maxPartitionsToMark <= 0) {
-            return Promise.reject("Parameter 'maxPartitionsToMark' is invalid & should greater than 1.")
+        if (maxPartitionsToAcquire <= 0) {
+            return Promise.reject("Parameter 'maxPartitionsToAcquire' is invalid & should greater than 1.")
         }
+
+        const keys = [
+            this._assembleKey(RecentAcitivityKey)
+        ]
 
         return new Promise((acc, rej) => {
-            this._scriptManager.run(scriptNameEnquePurge, [this._assembleKey(RecentAcitivityKey), this.purgeQueName], [partitionAgeThreshold, this._epoch, maxPartitionsToMark, (this.SettingsHash + Seperator)], (err, result) => {
+            this._scriptManager.run(scriptNamePurgeAcquire, [, this.purgeQueName], [partitionAgeThreshold, this._epoch, maxPartitionsToMark, (this.instanceHash + Seperator)], (err, result) => {
                 if (err !== null) {
                     return rej(err);
                 }
@@ -318,7 +321,7 @@ class SortedStore {
         });
     }
 
-    async purgeAck(purgeId, partitionName, partitionKey) {
+    async purgeRelease(purgeId, partitionName, partitionKey) {
         if (this._epoch == null) {
             return Promise.reject("Please initialize the instance by calling 'initialize' first before any calls.");
         }

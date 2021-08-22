@@ -22,7 +22,7 @@ describe('Timeseries consumer tests', function () {
 
         //SETUP
         let actualEPOCH = await target.initialize();
-        let expectedEPOCH = await redisClient.get(target.SettingsHash + "-EPOCH");
+        let expectedEPOCH = await redisClient.get(target.instanceHash + "-EPOCH");
 
         //VERIFY
         assert.strictEqual(actualEPOCH.toString(), expectedEPOCH);
@@ -31,7 +31,7 @@ describe('Timeseries consumer tests', function () {
     it('Should fail with initialization exception when EPOCH is set to invalid', async function () {
 
         //SETUP
-        let hash = Crypto.createHash("sha256").update(JSON.stringify({ "version": 1.0, "partitionWidth": 120000n.toString(), "purgeQueName": 'Purge' }), "binary").digest("hex")
+        let hash = Crypto.createHash("sha256").update(JSON.stringify({ "version": 1.0, "partitionWidth": 120000n.toString() }), "binary").digest("hex")
         await redisClient.set(hash + "-EPOCH", "Laukik");//This is to simulate key is set but not epoch i.e:Timestamp ;
 
         //VERIFY
@@ -140,17 +140,17 @@ describe('Timeseries consumer tests', function () {
                 const score = sample.t - partitionStart;
                 let errorMessage = `${partitionName} for score ${score} `;
                 //Data
-                let redisData = await redisClient.zrangebyscore((target.SettingsHash + "-" + partitionName), score, score);
+                let redisData = await redisClient.zrangebyscore((target.instanceHash + "-" + partitionName), score, score);
                 redisData = JSON.parse(redisData[0]);
                 assert.strictEqual(sample.s, redisData.p, (errorMessage + `has different data E:${sample.s} A:${redisData.p}.`));
 
                 //Index
                 const indexScore = EPOCH - partitionStart;
-                redisData = await redisClient.zrangebyscore((target.SettingsHash + "-" + tagName), indexScore, indexScore);
+                redisData = await redisClient.zrangebyscore((target.instanceHash + "-" + tagName), indexScore, indexScore);
                 assert.strictEqual(partitionName, redisData[0], (errorMessage + `has different Index E:${partitionName} A:${redisData[0]}.`));
 
                 //Recent Activity
-                redisData = await redisClient.zrank((target.SettingsHash + "-" + recentActivityKey), partitionName);
+                redisData = await redisClient.zrank((target.instanceHash + "-" + recentActivityKey), partitionName);
                 assert.strictEqual(true, parseInt(redisData) > -1, (errorMessage + ` doesnt have :${partitionName} in RecentActivity.`));
             };
         }
