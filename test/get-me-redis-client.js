@@ -31,6 +31,7 @@ module.exports = (redisConnectionString) => {
             redisClient.xrange = promisify(myFavClient.xrange).bind(myFavClient);
             redisClient.exists = promisify(myFavClient.exists).bind(myFavClient);
             redisClient.time = promisify(myFavClient.time).bind(myFavClient);
+            redisClient.zscore = promisify(myFavClient.zscore).bind(myFavClient);
 
             break;
         default:

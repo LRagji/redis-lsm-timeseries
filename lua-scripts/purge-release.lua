@@ -1,8 +1,10 @@
 local pendingPurgeKey = KEYS[1]
-local partitionKey = KEYS[2]
-local monitoringKey = KEYS[3]
+local partitionIndexKey = KEYS[2]
+local partitionKey = KEYS[3]
+local monitoringKey = KEYS[4]
 
 local purgeMember = ARGV[1]
+local partitionName = ARGV[2]
 
 local returnValues = {}
 
@@ -12,6 +14,7 @@ if ((purgeMemberExists == nil) or (type(purgeMemberExists) == "boolean" and purg
     table.insert(returnValues,0)
 else 
     redis.call("ZREM",pendingPurgeKey,purgeMember)
+    redis.call("ZREM",partitionIndexKey,partitionName)
     redis.call("DEL",partitionKey)
     table.insert(returnValues,1)
 end

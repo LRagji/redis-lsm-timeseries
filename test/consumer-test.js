@@ -761,8 +761,8 @@ describe('Timeseries consumer tests', function () {
         //SETUP
         const partitionWidth = 5;
         let inputData = new Map();
-        let qName = "Purge";
-        const Seperator = '-';
+        const recentActivityKey = "RecentActivity";
+        const PendingPurgeKey = "Pen"
 
         inputData.set("GapTag", new Map([[1, "One"], [2, "Two"], [10, "Ten"], [20, "Twenty"]]));
         inputData.set("SerialTag", new Map([[1, "One"], [2, "Two"], [3, "Three"], [4, "Four"]]));
@@ -774,44 +774,114 @@ describe('Timeseries consumer tests', function () {
 
         //Killtime
         await new Promise((acc, rej) => setTimeout(acc, 1500));
+
         //PURGE
         const acquiredPartitions = await target.purgeAcquire(1, 10, 1000);
+        const recentActivityContainsPartitionKey1 = await redisClient.zrank(target._assembleKey(recentActivityKey), acquiredPartitions[0].name);
+        const recentActivityContainsPartitionKey2 = await redisClient.zrank(target._assembleKey(recentActivityKey), acquiredPartitions[1].name);
+        const recentActivityContainsPartitionKey3 = await redisClient.zrank(target._assembleKey(recentActivityKey), acquiredPartitions[2].name);
+        const recentActivityContainsPartitionKey4 = await redisClient.zrank(target._assembleKey(recentActivityKey), acquiredPartitions[3].name);
+
+        const recentActivityContainsPartitionOldKey1 = await redisClient.zrank(target._assembleKey(recentActivityKey), acquiredPartitions[0].name.replace("pur", "acc"));
+        const recentActivityContainsPartitionOldKey2 = await redisClient.zrank(target._assembleKey(recentActivityKey), acquiredPartitions[1].name.replace("pur", "acc"));
+        const recentActivityContainsPartitionOldKey3 = await redisClient.zrank(target._assembleKey(recentActivityKey), acquiredPartitions[2].name.replace("pur", "acc"));
+        const recentActivityContainsPartitionOldKey4 = await redisClient.zrank(target._assembleKey(recentActivityKey), acquiredPartitions[3].name.replace("pur", "acc"));
+
+        const partitionKeyExists1 = await redisClient.exists(target._assembleKey(acquiredPartitions[0].name));
+        const partitionKeyExists2 = await redisClient.exists(target._assembleKey(acquiredPartitions[1].name));
+        const partitionKeyExists3 = await redisClient.exists(target._assembleKey(acquiredPartitions[2].name));
+        const partitionKeyExists4 = await redisClient.exists(target._assembleKey(acquiredPartitions[3].name));
+
+        const partitionKeyExistsOld1 = await redisClient.exists(target._assembleKey(acquiredPartitions[0].name.replace("pur", "acc")));
+        const partitionKeyExistsOld2 = await redisClient.exists(target._assembleKey(acquiredPartitions[1].name.replace("pur", "acc")));
+        const partitionKeyExistsOld3 = await redisClient.exists(target._assembleKey(acquiredPartitions[2].name.replace("pur", "acc")));
+        const partitionKeyExistsOld4 = await redisClient.exists(target._assembleKey(acquiredPartitions[3].name.replace("pur", "acc")));
+
+        const pendingContainsPartitionKey1 = await redisClient.zscore(target._assembleKey(PendingPurgeKey), acquiredPartitions[0].releaseToken);
+        const pendingContainsPartitionKey2 = await redisClient.zscore(target._assembleKey(PendingPurgeKey), acquiredPartitions[1].releaseToken);
+        const pendingContainsPartitionKey3 = await redisClient.zscore(target._assembleKey(PendingPurgeKey), acquiredPartitions[2].releaseToken);
+        const pendingContainsPartitionKey4 = await redisClient.zscore(target._assembleKey(PendingPurgeKey), acquiredPartitions[3].releaseToken);
+
+        const indexContainsPartitionKey1 = await redisClient.zscore(target._assembleKey(acquiredPartitions[0].key), acquiredPartitions[0].name);
+        const indexContainsPartitionKey2 = await redisClient.zscore(target._assembleKey(acquiredPartitions[1].key), acquiredPartitions[1].name);
+        const indexContainsPartitionKey3 = await redisClient.zscore(target._assembleKey(acquiredPartitions[2].key), acquiredPartitions[2].name);
+        const indexContainsPartitionKey4 = await redisClient.zscore(target._assembleKey(acquiredPartitions[3].key), acquiredPartitions[3].name);
+
+        const indexContainsPartitionOldKey1 = await redisClient.zscore(target._assembleKey(acquiredPartitions[0].key), acquiredPartitions[0].name.replace("pur", "acc"));
+        const indexContainsPartitionOldKey2 = await redisClient.zscore(target._assembleKey(acquiredPartitions[1].key), acquiredPartitions[1].name.replace("pur", "acc"));
+        const indexContainsPartitionOldKey3 = await redisClient.zscore(target._assembleKey(acquiredPartitions[2].key), acquiredPartitions[2].name.replace("pur", "acc"));
+        const indexContainsPartitionOldKey4 = await redisClient.zscore(target._assembleKey(acquiredPartitions[3].key), acquiredPartitions[3].name.replace("pur", "acc"));
+
         //VERIFY
         assert.deepStrictEqual(bytes > 1n, true);
         assert.deepStrictEqual(acquiredPartitions.length === 4, true, `A:${acquiredPartitions.length} E:${4}`);
-
         assert.deepStrictEqual(acquiredPartitions[0], {
             start: 0n,
             key: 'GapTag',
             name: 'GapTag-0-pur',
-            purgeReleaseToken: `["GapTag-0-pur",["${target.instanceName}"]]`,
+            releaseToken: `["GapTag-0-pur",["${target.instanceName}"]]`,
             history: [target.instanceName],
-            partitionData: new Map([[1, 'One'], [2, 'Two']])
+            data: new Map([[1, 'One'], [2, 'Two']])
         });
         assert.deepStrictEqual(acquiredPartitions[1], {
             start: 10n,
             key: 'GapTag',
             name: 'GapTag-10-pur',
-            purgeReleaseToken: `["GapTag-10-pur",["${target.instanceName}"]]`,
+            releaseToken: `["GapTag-10-pur",["${target.instanceName}"]]`,
             history: [target.instanceName],
-            partitionData: new Map([[10, 'Ten']])
+            data: new Map([[10, 'Ten']])
         });
         assert.deepStrictEqual(acquiredPartitions[2], {
             start: 20n,
             key: 'GapTag',
             name: 'GapTag-20-pur',
-            purgeReleaseToken: `["GapTag-20-pur",["${target.instanceName}"]]`,
+            releaseToken: `["GapTag-20-pur",["${target.instanceName}"]]`,
             history: [target.instanceName],
-            partitionData: new Map([[20, 'Twenty']])
+            data: new Map([[20, 'Twenty']])
         });
         assert.deepStrictEqual(acquiredPartitions[3], {
             start: 0n,
             key: 'SerialTag',
             name: 'SerialTag-0-pur',
-            purgeReleaseToken: `["SerialTag-0-pur",["${target.instanceName}"]]`,
+            releaseToken: `["SerialTag-0-pur",["${target.instanceName}"]]`,
             history: [target.instanceName],
-            partitionData: new Map([[1, 'One'], [2, 'Two'], [3, 'Three'], [4, 'Four']])
+            data: new Map([[1, 'One'], [2, 'Two'], [3, 'Three'], [4, 'Four']])
         });
+        assert.deepStrictEqual(recentActivityContainsPartitionKey1, null);
+        assert.deepStrictEqual(recentActivityContainsPartitionKey2, null);
+        assert.deepStrictEqual(recentActivityContainsPartitionKey3, null);
+        assert.deepStrictEqual(recentActivityContainsPartitionKey4, null);
+
+        assert.deepStrictEqual(recentActivityContainsPartitionOldKey1, null);
+        assert.deepStrictEqual(recentActivityContainsPartitionOldKey2, null);
+        assert.deepStrictEqual(recentActivityContainsPartitionOldKey3, null);
+        assert.deepStrictEqual(recentActivityContainsPartitionOldKey4, null);
+
+        assert.deepStrictEqual(partitionKeyExists1, 1);
+        assert.deepStrictEqual(partitionKeyExists2, 1);
+        assert.deepStrictEqual(partitionKeyExists3, 1);
+        assert.deepStrictEqual(partitionKeyExists4, 1);
+
+        assert.deepStrictEqual(partitionKeyExistsOld1, 0);
+        assert.deepStrictEqual(partitionKeyExistsOld2, 0);
+        assert.deepStrictEqual(partitionKeyExistsOld3, 0);
+        assert.deepStrictEqual(partitionKeyExistsOld4, 0);
+
+        assert.deepStrictEqual(pendingContainsPartitionKey1 >= 0, true, `Should be greater than zero ${pendingContainsPartitionKey1}`);
+        assert.deepStrictEqual(pendingContainsPartitionKey2 >= 0, true, `Should be greater than zero ${pendingContainsPartitionKey1}`);
+        assert.deepStrictEqual(pendingContainsPartitionKey3 >= 0, true, `Should be greater than zero ${pendingContainsPartitionKey1}`);
+        assert.deepStrictEqual(pendingContainsPartitionKey4 >= 0, true, `Should be greater than zero ${pendingContainsPartitionKey1}`);
+
+        assert.deepStrictEqual(indexContainsPartitionKey1 >= 0, true, `Should be greater than zero ${indexContainsPartitionKey1}`);
+        assert.deepStrictEqual(indexContainsPartitionKey2 >= 0, true, `Should be greater than zero ${indexContainsPartitionKey2}`);
+        assert.deepStrictEqual(indexContainsPartitionKey3 >= 0, true, `Should be greater than zero ${indexContainsPartitionKey3}`);
+        assert.deepStrictEqual(indexContainsPartitionKey4 >= 0, true, `Should be greater than zero ${indexContainsPartitionKey4}`);
+
+        assert.deepStrictEqual(indexContainsPartitionOldKey1, null);
+        assert.deepStrictEqual(indexContainsPartitionOldKey2, null);
+        assert.deepStrictEqual(indexContainsPartitionOldKey3, null);
+        assert.deepStrictEqual(indexContainsPartitionOldKey4, null);
+
     }).timeout(2500);
 
     it('Should not allow to mark partition for purging when not initialized', async function () {
@@ -881,55 +951,56 @@ describe('Timeseries consumer tests', function () {
 
     });
 
-    // it('Should ack partition after purging when correct parameters are presented.', async function () {
+    it('Should ack partition after purging when correct parameters are presented.', async function () {
 
-    //     //SETUP
-    //     const partitionWidth = 5;
-    //     let inputData = new Map();
-    //     let qName = "Purge";
-    //     const Seperator = '-';
-    //     const recentActivityKey = "RecentActivity";
+        //SETUP
+        const partitionWidth = 5;
+        let inputData = new Map();
+        const recentActivityKey = "RecentActivity";
 
-    //     inputData.set("GapTag", new Map([[1, "One"], [2, "Two"], [10, "Ten"], [20, "Twenty"]]));
-    //     inputData.set("SerialTag", new Map([[1, "One"], [2, "Two"], [3, "Three"], [4, "Four"]]));
+        inputData.set("GapTag", new Map([[1, "One"], [2, "Two"], [10, "Ten"], [20, "Twenty"]]));
+        inputData.set("SerialTag", new Map([[1, "One"], [2, "Two"], [3, "Three"], [4, "Four"]]));
 
-    //     await target.initialize(partitionWidth, qName);
+        await target.initialize(partitionWidth);
 
-    //     //WRITE
-    //     const bytes = await target.write(inputData);
+        //WRITE
+        const bytes = await target.write(inputData);
 
-    //     //PURGE
-    //     const markedPartitionsIds = await target.purgeScan(1, 10);
+        //Killtime
+        await new Promise((acc, rej) => setTimeout(acc, 1500));
 
-    //     //GET Purged Details
-    //     const results = await redisClient.xrange(target._assembleKey(qName), markedPartitionsIds[0], markedPartitionsIds[0]);
-    //     const parsedData = target.parsePurgePayload(results[0])
-    //     const partitionKey = parsedData.partition;
-    //     const tagName = parsedData.key;
+        //PURGE
+        const acquiredPartitions = await target.purgeAcquire(1, 10, 1000);
 
-    //     //PURGE-ACK
-    //     const returnValue = await target.purgeAck(markedPartitionsIds[0], partitionKey, tagName)
-    //     const partitionKeyExists = await redisClient.exists(target._assembleKey(partitionKey));
-    //     const recentActivityContainsPartitionKey = await redisClient.zrank(target._assembleKey(recentActivityKey), partitionKey);
-    //     const indexKeyExists = await redisClient.exists(target._assembleKey(tagName));
+        //GET Purged Details
+        // const results = await redisClient.xrange(target._assembleKey(qName), markedPartitionsIds[0], markedPartitionsIds[0]);
+        // const parsedData = target.parsePurgePayload(results[0])
+        // const partitionKey = parsedData.partition;
+        // const tagName = parsedData.key;
 
-    //     //Read for acked tag
-    //     const ranges = new Map();
-    //     ranges.set("GapTag", { start: 0, end: 50 });
-    //     ranges.set("SerialTag", { start: 0, end: 50 });
-    //     const readResults = await readData(ranges);
+        //PURGE-Release
+        const returnValue = await target.purgeRelease(acquiredPartitions[0].name, acquiredPartitions[0].key, acquiredPartitions[0].releaseToken);
+        const partitionKeyExists = await redisClient.exists(target._assembleKey(acquiredPartitions[0].name));
+        const recentActivityContainsPartitionKey = await redisClient.zrank(target._assembleKey(recentActivityKey), acquiredPartitions[0].name);
+        const indexKeyExists = await redisClient.exists(target._assembleKey(acquiredPartitions[0].key));
 
-    //     //VERIFY
-    //     assert.deepStrictEqual(bytes > 1n, true);
-    //     assert.deepStrictEqual(markedPartitionsIds.length === 4, true, `A:${markedPartitionsIds.length} E:${4}`);
-    //     assert.deepStrictEqual(returnValue, 1);
-    //     assert.deepStrictEqual(partitionKeyExists, 0);
-    //     assert.deepStrictEqual(recentActivityContainsPartitionKey, null);
-    //     assert.deepStrictEqual(indexKeyExists, 1);
-    //     inputData.set("GapTag", new Map([[10, "Ten"], [20, "Twenty"]]))
-    //     assert.deepStrictEqual(readResults, inputData);
+        //Read for acked tag
+        const ranges = new Map();
+        ranges.set("GapTag", { start: 0, end: 50 });
+        ranges.set("SerialTag", { start: 0, end: 50 });
+        const readResults = await readData(ranges);
 
-    // });
+        //VERIFY
+        assert.deepStrictEqual(bytes > 1n, true);
+        assert.deepStrictEqual(acquiredPartitions.length === 4, true, `A:${acquiredPartitions.length} E:${4}`);
+        assert.deepStrictEqual(returnValue.success, 1);
+        assert.deepStrictEqual(partitionKeyExists, 0);
+        assert.deepStrictEqual(recentActivityContainsPartitionKey, null);
+        assert.deepStrictEqual(indexKeyExists, 1);
+        inputData.set("GapTag", new Map([[10, "Ten"], [20, "Twenty"]]))
+        assert.deepStrictEqual(readResults, inputData);
+
+    }).timeout(2500);
 
     // it('Should purge data only once even if it purge is called multiple times.', async function () {
 

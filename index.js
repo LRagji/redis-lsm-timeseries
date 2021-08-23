@@ -12,10 +12,11 @@ const Seperator = "-";
 const safeMaxItemLimit = 2000;
 const safeIndexedTagsRead = 100;
 const RecentAcitivityKey = "RecentActivity";
+const MonitoringKey = "MonitorConfig";
 const SafeKeyNameLength = 200;
 const WITHSCORES = "WITHSCORES";
 const scriptNamePurgeAcquire = "purge-acquire";
-const scriptNamePurgeAck = "ack-purge";
+const scriptNamePurgeRelease = "purge-release";
 const AccumalatingFlag = "acc";
 const PendingPurgeKey = "Pen"
 const PurgeFlag = "pur"
@@ -43,7 +44,7 @@ class SortedStore {
         this.readPage = this.readPage.bind(this);
         this.purgeAcquire = this.purgeAcquire.bind(this);
         this.purgeRelease = this.purgeRelease.bind(this);
-        this.parsePurgePayload = this.parsePurgePayload.bind(this);
+        //this.parsePurgePayload = this.parsePurgePayload.bind(this);
     }
 
     async initialize(orderedPartitionWidth = 120000n) {
@@ -354,9 +355,9 @@ class SortedStore {
             const acquiredPartitionLog = acquiredPartitionInfo[1];
             acquiredPartitionInfo = this._extractPartitionInfo(acquiredPartitionName);
             acquiredPartitionInfo.name = acquiredPartitionName;
-            acquiredPartitionInfo.purgeReleaseToken = serializedData[0];
+            acquiredPartitionInfo.releaseToken = serializedData[0];
             acquiredPartitionInfo.history = acquiredPartitionLog;
-            acquiredPartitionInfo.partitionData = this._parseRedisData(serializedData[1], acquiredPartitionInfo.start);
+            acquiredPartitionInfo.data = this._parseRedisData(serializedData[1], acquiredPartitionInfo.start);
             return acquiredPartitionInfo;
         });
 
@@ -365,43 +366,53 @@ class SortedStore {
         //         start: 0n,
         //         key: 'SerialTag',
         //         name: 'SerialTag-0-pur',
-        //         purgeReleaseToken: '["SerialTag-0-pur",["LJPiT520WP"]]',
+        //         releaseToken: '["SerialTag-0-pur",["LJPiT520WP"]]',
         //         history: [ 'LJPiT520WP' ],
-        //         partitionData: Map { 1 => 'One', 2 => 'Two', 3 => 'Three', 4 => 'Four' }
+        //         data: Map { 1 => 'One', 2 => 'Two', 3 => 'Three', 4 => 'Four' }
         //       }
         // ]
     }
 
-    async purgeRelease(purgeId, partitionName, partitionKey) {
+    async purgeRelease(partitionName, partitionKey, purgeReleaseToken) {
         if (this._epoch == null) {
             return Promise.reject("Please initialize the instance by calling 'initialize' first before any calls.");
-        }
-        if (purgeId == undefined || purgeId === "") {
-            return Promise.reject("Invalid parameter 'purgeId'.");
         }
         if (partitionName == undefined || partitionName === "") {
             return Promise.reject("Invalid parameter 'partitionName'.");
         }
+        if (purgeReleaseToken == undefined || purgeReleaseToken === "") {
+            return Promise.reject("Invalid parameter 'purgeReleaseToken'.");
+        }
         if (partitionKey == undefined || partitionKey === "") {
             return Promise.reject("Invalid parameter 'partitionKey'.");
         }
-
-        return new Promise((acc, rej) => {
-            this._scriptManager.run(scriptNamePurgeAck, [this._assembleKey(RecentAcitivityKey), this.purgeQueName, this._assembleKey(partitionName), this._assembleKey(partitionKey)], [purgeId], (err, result) => {
+        const keys = [
+            this._assembleKey(PendingPurgeKey),
+            this._assembleKey(partitionKey),
+            this._assembleKey(partitionName),
+            this._assembleKey(MonitoringKey)
+        ];
+        const args = [
+            purgeReleaseToken,
+            partitionName
+        ];
+        const response = await new Promise((acc, rej) => {
+            this._scriptManager.run(scriptNamePurgeRelease, keys, args, (err, result) => {
                 if (err !== null) {
                     return rej(err);
                 }
                 acc(result);
             });
         });
+        return { "success": response[0], "rate": parseFloat(response[1]) }
     }
 
-    parsePurgePayload(payload) {
-        const partitionName = payload[1][0];
-        const partitionInfo = this._extractPartitionInfo(partitionName);
-        const data = JSON.parse(payload[1][1]);
-        return { "id": payload[0], "partition": partitionName, "key": partitionInfo.key, "data": this._parseRedisData(data, partitionInfo.start) };
-    }
+    // parsePurgePayload(payload) {
+    //     const partitionName = payload[1][0];
+    //     const partitionInfo = this._extractPartitionInfo(partitionName);
+    //     const data = JSON.parse(payload[1][1]);
+    //     return { "id": payload[0], "partition": partitionName, "key": partitionInfo.key, "data": this._parseRedisData(data, partitionInfo.start) };
+    // }
 }
 
 
