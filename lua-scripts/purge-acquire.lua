@@ -18,8 +18,17 @@ local tempTime = redis.call("TIME")
 local currentTimestampInSeconds = tonumber(tempTime[1])
 local currentRelativeTimeInSeconds = currentTimestampInSeconds - epochInSeconds
 local relativeEndTimeInSeconds = (currentTimestampInSeconds - purgeThresholdInSeconds) - epochInSeconds
+local relativePendingTimeoutInSeconds = (currentTimestampInSeconds - pendingTimeoutInSeconds) - epochInSeconds
 
-local timedOutPartitions = redis.call('ZRANGEBYSCORE',pendingPurgeKey,"-inf",relativeEndTimeInSeconds,"LIMIT",0, numberOfParitionsToPurge)
+if relativeEndTimeInSeconds == 0 then 
+    relativeEndTimeInSeconds = 1
+end
+
+if relativePendingTimeoutInSeconds == 0 then 
+    relativePendingTimeoutInSeconds = 1
+end
+
+local timedOutPartitions = redis.call('ZRANGEBYSCORE',pendingPurgeKey,"-inf",relativePendingTimeoutInSeconds,"LIMIT",0, numberOfParitionsToPurge)
 for index = 1, #timedOutPartitions do
     local timedOutPartition = timedOutPartitions[index]
     redis.call("ZREM",pendingPurgeKey,timedOutPartition)
@@ -32,7 +41,7 @@ for index = 1, #timedOutPartitions do
 end
 
 if(#acquiredPartitions < numberOfParitionsToPurge) then
-    local newPartitions = redis.call('ZRANGEBYSCORE',recentActivityKey,"-inf",relativeEndTimeInSeconds,"LIMIT",0, (numberOfParitionsToPurge - #acquiredPartitions))
+    local newPartitions = redis.call('ZRANGEBYSCORE',recentActivityKey,"-inf",(relativeEndTimeInSeconds * 1000),"LIMIT",0, (numberOfParitionsToPurge - #acquiredPartitions))
    
     for index = 1, #newPartitions do
         local completePartitionName = newPartitions[index] --ABC-200-acc
@@ -54,7 +63,7 @@ if(#acquiredPartitions < numberOfParitionsToPurge) then
         table.insert(pendingMember,renamedPartition)
         table.insert(pendingMember,tokensList)
         pendingMember = cjson.encode(pendingMember)
-        redis.call("ZADD",pendingPurgeKey,relativeEndTimeInSeconds,pendingMember)
+        redis.call("ZADD",pendingPurgeKey,currentRelativeTimeInSeconds,pendingMember)
 
         local dataToBePurged = redis.call('ZRANGE',(spaceKey ..  seperator .. renamedPartition),0,-1,'WITHSCORES')
         table.insert(acquiredPartitions,{pendingMember,dataToBePurged})

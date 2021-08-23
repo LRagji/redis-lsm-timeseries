@@ -49,7 +49,9 @@ class SortedStore {
     async initialize(orderedPartitionWidth = 120000n) {
         this._orderedPartitionWidth = BigInt(orderedPartitionWidth);
         this.instanceHash = this._settingsHash({ "version": 1.0, "partitionWidth": this._orderedPartitionWidth.toString() });
-        await this._redisClient.set(this._assembleKey(EPOCHKey), Date.now().toString(DecimalRadix), SetOptionDonotOverwrite);
+        const serverTime = await this._redisClient.time();
+        const serverTimeInMilliSeconds = BigInt(serverTime[0] + serverTime[1].substring(0, 3));
+        await this._redisClient.set(this._assembleKey(EPOCHKey), serverTimeInMilliSeconds, SetOptionDonotOverwrite);
         this._epoch = await this._redisClient.get(this._assembleKey(EPOCHKey));
         this._epoch = parseInt(this._epoch, DecimalRadix);
         if (Number.isNaN(this._epoch)) {
@@ -69,7 +71,10 @@ class SortedStore {
             return Promise.reject("Please initialize the instance by calling 'initialize' first before any calls.");
         }
 
-        const transformed = this._validateTransformParameters(keyValuePairs);
+        const serverTime = await this._redisClient.time();
+        const serverTimeInMilliSeconds = BigInt(serverTime[0] + serverTime[1].substring(0, 3));
+
+        const transformed = this._validateTransformParameters(keyValuePairs, serverTimeInMilliSeconds);
 
         if (transformed.error !== null) {
             return Promise.reject(transformed.error);
@@ -95,9 +100,9 @@ class SortedStore {
         return Promise.resolve(serverMemory);
     }
 
-    _validateTransformParameters(keyValuePairs) {
+    _validateTransformParameters(keyValuePairs, serverTime) {
         const returnObject = { "error": null, payload: new Map() };
-        const sampleIngestionTime = BigInt(Date.now());
+        const sampleIngestionTime = serverTime;
         const errors = [];
         let itemCounter = 0;
 
