@@ -10,8 +10,8 @@ const redisClient = new redisType(localRedisConnectionString);
 const store = new timeseriesType(redisClient);
 const app = express()
 const port = 3000
-const purgeLimit = 1//1e8;//~200MB
-const brokerType = require('redis-streams-broker').StreamChannelBroker;
+//const purgeLimit = 1//1e8;//~200MB
+//const brokerType = require('redis-streams-broker').StreamChannelBroker;
 const HotHoldTime = 120 * 1000;
 
 app.use(express.json());
@@ -106,34 +106,61 @@ async function newMessageHandler(payloads) {
     //await store.purgeScan(5000, 5000);
 }
 
-let previousDate = Date.now();
-let previousDBSize = 0;
+// let previousDate = Date.now();
+// let previousDBSize = 0;
 
 //Startup
 (async () => {
     await store.initialize();
     const consumerName = `C-${store.instanceName}`;
     if (process.argv[2] === "Mute") {
-        const redisClientBroker = new redisType(localRedisConnectionString);
-        const broker = new brokerType(redisClientBroker, store.purgeQueName);
-        const consumerGroup = await broker.joinConsumerGroup("MyGroup");
-        await consumerGroup.subscribe(consumerName, newMessageHandler, HotHoldTime / 4, 1000);
+        //const redisClientBroker = new redisType(localRedisConnectionString);
+        //const broker = new brokerType(redisClientBroker, store.purgeQueName);
+        //const consumerGroup = await broker.joinConsumerGroup("MyGroup");
+        //await consumerGroup.subscribe(consumerName, newMessageHandler, HotHoldTime / 4, 1000);
 
         //Push for completed
-        setInterval(async () => {
-            let time = Date.now();
-            const dbSize = await redisClient.dbsize();
-            let qued = await store.purgeScan(HotHoldTime + 3000, 10000);
-            let partitionPurgeRate = "";
-            if (previousDBSize != 0) {
-                partitionPurgeRate = ((dbSize - previousDBSize) / (time - previousDate)) * HotHoldTime
-            }
-            previousDBSize = dbSize;
-            previousDate = time;
-            console.log(`=> T:${Date.now() - previousDate} P:${qued.length} Rate:${partitionPurgeRate}`);
-        }, (HotHoldTime / 4) + 3000);
+        //setInterval(async () => {
+        //let time = Date.now();
+        //const dbSize = await redisClient.dbsize();
+        //let qued = await store.purgeScan(HotHoldTime + 3000, 10000);
+        //let partitionPurgeRate = "";
+        // if (previousDBSize != 0) {
+        //     partitionPurgeRate = ((dbSize - previousDBSize) / (time - previousDate)) * HotHoldTime
+        // }
+        // previousDBSize = dbSize;
+        // previousDate = time;
+        //console.log(`=> T:${Date.now() - previousDate} P:${qued.length} Rate:${partitionPurgeRate}`);
+        //}, (HotHoldTime / 4) + 3000);
 
         console.log(`${consumerName} is running in muted mode.`);
+        const holdTimeInSeconds = HotHoldTime / 1000;
+        let shutdown = false;
+        while (shutdown === false) {
+            try {
+                const startTime = Date.now();
+                const acquiredPartitions = await store.purgeAcquire((holdTimeInSeconds + 3), 1, holdTimeInSeconds * 3);
+                for (let index = 0; index < acquiredPartitions.length; index++) {
+                    const partitionInfo = acquiredPartitions[index];
+                    let fileData = "";
+                    const entryTime = Date.now();
+                    partitionInfo.data.forEach((v, k) => {
+                        fileData += `\r\n${k},${entryTime},${Buffer.from(String(v)).toString("base64")}`;
+                    });
+                    await fs.appendFile(path.join(__dirname, "/raw-db/", element.data.partition + ".txt"), fileData);
+                    const releaseMessage = await store.purgeRelease(partitionInfo.tagName, partitionInfo.key, partitionInfo.releaseToken);
+                    console.log(`=> T:${Date.now() - startTime} Rate:${releaseMessage[1]}`);
+                }
+            }
+            catch (err) {
+                console.error(err);
+            }
+            finally {
+                //Killtime
+                await new Promise((acc, rej) => setTimeout(acc, (HotHoldTime / 4)));
+            }
+        }
+
         return null
     }
     else {
