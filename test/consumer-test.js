@@ -972,17 +972,10 @@ describe('Timeseries consumer tests', function () {
         //PURGE
         const acquiredPartitions = await target.purgeAcquire(1, 10, 1000);
 
-        //GET Purged Details
-        // const results = await redisClient.xrange(target._assembleKey(qName), markedPartitionsIds[0], markedPartitionsIds[0]);
-        // const parsedData = target.parsePurgePayload(results[0])
-        // const partitionKey = parsedData.partition;
-        // const tagName = parsedData.key;
-
         //PURGE-Release
         const returnValue = await target.purgeRelease(acquiredPartitions[0].name, acquiredPartitions[0].key, acquiredPartitions[0].releaseToken);
         const partitionKeyExists = await redisClient.exists(target._assembleKey(acquiredPartitions[0].name));
-        const recentActivityContainsPartitionKey = await redisClient.zrank(target._assembleKey(recentActivityKey), acquiredPartitions[0].name);
-        const indexKeyExists = await redisClient.exists(target._assembleKey(acquiredPartitions[0].key));
+        const indexContainsPartitionKey = await redisClient.zscore(target._assembleKey(acquiredPartitions[0].key), acquiredPartitions[0].name);
 
         //Read for acked tag
         const ranges = new Map();
@@ -994,9 +987,9 @@ describe('Timeseries consumer tests', function () {
         assert.deepStrictEqual(bytes > 1n, true);
         assert.deepStrictEqual(acquiredPartitions.length === 4, true, `A:${acquiredPartitions.length} E:${4}`);
         assert.deepStrictEqual(returnValue.success, 1);
+        assert.deepStrictEqual(Number.isFinite(returnValue.rate), true);
         assert.deepStrictEqual(partitionKeyExists, 0);
-        assert.deepStrictEqual(recentActivityContainsPartitionKey, null);
-        assert.deepStrictEqual(indexKeyExists, 1);
+        assert.deepStrictEqual(indexContainsPartitionKey, null);
         inputData.set("GapTag", new Map([[10, "Ten"], [20, "Twenty"]]))
         assert.deepStrictEqual(readResults, inputData);
 
