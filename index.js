@@ -380,11 +380,11 @@ class SortedStore {
         if (partitionName == undefined || partitionName === "") {
             return Promise.reject("Invalid parameter 'partitionName'.");
         }
-        if (purgeReleaseToken == undefined || purgeReleaseToken === "") {
-            return Promise.reject("Invalid parameter 'purgeReleaseToken'.");
-        }
         if (partitionKey == undefined || partitionKey === "") {
             return Promise.reject("Invalid parameter 'partitionKey'.");
+        }
+        if (purgeReleaseToken == undefined || purgeReleaseToken === "") {
+            return Promise.reject("Invalid parameter 'purgeReleaseToken'.");
         }
         const keys = [
             this._assembleKey(PendingPurgeKey),
