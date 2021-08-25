@@ -44,7 +44,6 @@ class SortedStore {
         this.readPage = this.readPage.bind(this);
         this.purgeAcquire = this.purgeAcquire.bind(this);
         this.purgeRelease = this.purgeRelease.bind(this);
-        //this.parsePurgePayload = this.parsePurgePayload.bind(this);
     }
 
     async initialize(orderedPartitionWidth = 120000n) {
@@ -62,7 +61,7 @@ class SortedStore {
         else {
             this.instanceName = shortid.generate();
             this._epoch = BigInt(this._epoch);
-            return Promise.resolve(this._epoch);
+            return this._epoch;
         }
     }
 
@@ -98,7 +97,7 @@ class SortedStore {
 
         const info = await this._redisClient.info('Memory');
         const serverMemory = BigInt(info.split('\r\n')[1].split(':')[1]);
-        return Promise.resolve(serverMemory);
+        return serverMemory;
     }
 
     _validateTransformParameters(keyValuePairs, serverTime) {
@@ -235,7 +234,7 @@ class SortedStore {
             }
             pages.set(result.value.partitionKey, result.value.pages);
         });
-        return Promise.resolve(pages);
+        return pages;
     }
 
     async readPage(pagename, filter = sortKey => true) {
@@ -262,7 +261,7 @@ class SortedStore {
         const response = await this._redisClient.zrange(this._assembleKey(pagename), 0, -1, WITHSCORES);
         const returnMap = this._parseRedisData(response, partitionStart, filter);
 
-        return Promise.resolve(returnMap);
+        return returnMap;
     }
 
     _extractPartitionInfo(partitionName) {
@@ -406,13 +405,6 @@ class SortedStore {
         });
         return { "success": response[0], "rate": parseFloat(response[1]) }
     }
-
-    // parsePurgePayload(payload) {
-    //     const partitionName = payload[1][0];
-    //     const partitionInfo = this._extractPartitionInfo(partitionName);
-    //     const data = JSON.parse(payload[1][1]);
-    //     return { "id": payload[0], "partition": partitionName, "key": partitionInfo.key, "data": this._parseRedisData(data, partitionInfo.start) };
-    // }
 }
 
 
