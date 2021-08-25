@@ -1,8 +1,8 @@
 //This is just a sample microservice
 const express = require('express')
 const compression = require('compression')
-const fs = require('fs').promises;
 const path = require('path');
+const { Worker } = require('worker_threads');
 const redisType = require("ioredis");
 const timeseriesType = require("../../index").Timeseries;
 const localRedisConnectionString = "redis://127.0.0.1:6379/";
@@ -10,8 +10,6 @@ const redisClient = new redisType(localRedisConnectionString);
 const store = new timeseriesType(redisClient);
 const app = express()
 const port = 3000
-//const purgeLimit = 1//1e8;//~200MB
-//const brokerType = require('redis-streams-broker').StreamChannelBroker;
 const HotHoldTime = 120 * 1000;
 
 app.use(express.json());
@@ -86,93 +84,33 @@ async function readData(ranges) {
     return returnObject;
 }
 
-// async function newMessageHandler(payloads) {
-//     let time = Date.now();
-//     let multiWrites = payloads.map(async element => {
-//         element.data = store.parsePurgePayload(element.raw);
-//         let fileData = "";
-//         const entryTime = Date.now();
-//         element.data.data.forEach((v, k) => {
-//             fileData += `\r\n${k},${entryTime},${Buffer.from(String(v)).toString("base64")}`;
-//         });
-//         await fs.appendFile(path.join(__dirname, "/raw-db/", element.data.partition + ".txt"), fileData);
-//         await store.purgeAck(element.id, element.data.partition, element.data.key);
-//         await element.markAsRead(true);
-//         return element.data.data.size;
-//     });
-//     let samplesWritten = await Promise.all(multiWrites);
-//     samplesWritten = samplesWritten.reduce((acc, e) => acc + e);
-//     console.log(`<= T:${Date.now() - time} P:${payloads.length} S:${samplesWritten} #`);
-//     //await store.purgeScan(5000, 5000);
-// }
-
-// let previousDate = Date.now();
-// let previousDBSize = 0;
-
 //Startup
 (async () => {
     await store.initialize();
+
     const consumerName = `C-${store.instanceName}`;
-    if (process.argv[2] === "Mute") {
-        //const redisClientBroker = new redisType(localRedisConnectionString);
-        //const broker = new brokerType(redisClientBroker, store.purgeQueName);
-        //const consumerGroup = await broker.joinConsumerGroup("MyGroup");
-        //await consumerGroup.subscribe(consumerName, newMessageHandler, HotHoldTime / 4, 1000);
+    app.listen(port, () => {
+        console.log(`${consumerName} listening at http://localhost:${port}`);
+    });
 
-        //Push for completed
-        //setInterval(async () => {
-        //let time = Date.now();
-        //const dbSize = await redisClient.dbsize();
-        //let qued = await store.purgeScan(HotHoldTime + 3000, 10000);
-        //let partitionPurgeRate = "";
-        // if (previousDBSize != 0) {
-        //     partitionPurgeRate = ((dbSize - previousDBSize) / (time - previousDate)) * HotHoldTime
-        // }
-        // previousDBSize = dbSize;
-        // previousDate = time;
-        //console.log(`=> T:${Date.now() - previousDate} P:${qued.length} Rate:${partitionPurgeRate}`);
-        //}, (HotHoldTime / 4) + 3000);
-
-        console.log(`${consumerName} is running in muted mode.`);
-        const holdTimeInSeconds = HotHoldTime / 1000;
-        let shutdown = false;
-        while (shutdown === false) {
-            const startTime = Date.now();
-            try {
-                let summedAverage = 0.0;
-                const acquiredPartitions = await store.purgeAcquire((holdTimeInSeconds + 3), 100, holdTimeInSeconds * 3);
-                for (let index = 0; index < acquiredPartitions.length; index++) {
-                    const partitionInfo = acquiredPartitions[index];
-                    let fileData = "";
-                    partitionInfo.data.forEach((v, k) => {
-                        fileData += `\r\n${k},${startTime},${Buffer.from(String(v)).toString("base64")}`;
-                    });
-                    await fs.appendFile(path.join(__dirname, "/raw-db/", partitionInfo.key + ".txt"), fileData);
-                    const releaseMessage = await store.purgeRelease(partitionInfo.name, partitionInfo.key, partitionInfo.releaseToken);
-                    summedAverage += releaseMessage.rate;
-                }
-                console.log(`=> T:${Date.now() - startTime} P:${acquiredPartitions.length} Rate:${(summedAverage / acquiredPartitions.length).toFixed(2)}`);
+    await new Promise((resolve, reject) => {
+        const worker = new Worker(path.join(__dirname, "purge-worker.js"), {
+            workerData: {
+                "HotHoldTime": HotHoldTime,
+                "coolDownTime": 5000,
+                "processInOneLoop":200,
+                "redisConnectionString": localRedisConnectionString
             }
-            catch (err) {
-                console.error(err);
-            }
-            finally {
-                //Killtime
-                await new Promise((acc, rej) => setTimeout(acc, 5000));
-            }
-        }
-
-        return null
-    }
-    else {
-        return consumerName;
-    }
+        });
+        worker.on('message', resolve);
+        worker.on('error', reject);
+        worker.on('exit', (code) => {
+            if (code !== 0)
+                reject(new Error(`Worker stopped with exit code ${code}`));
+        });
+    });
 
 })()
     .then(consumerName => {
-        if (consumerName != null) {
-            app.listen(port, () => {
-                console.log(`${consumerName} listening at http://localhost:${port}`);
-            });
-        }
+        console.log("Program Exit");
     });
