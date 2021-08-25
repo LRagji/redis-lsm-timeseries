@@ -86,25 +86,25 @@ async function readData(ranges) {
     return returnObject;
 }
 
-async function newMessageHandler(payloads) {
-    let time = Date.now();
-    let multiWrites = payloads.map(async element => {
-        element.data = store.parsePurgePayload(element.raw);
-        let fileData = "";
-        const entryTime = Date.now();
-        element.data.data.forEach((v, k) => {
-            fileData += `\r\n${k},${entryTime},${Buffer.from(String(v)).toString("base64")}`;
-        });
-        await fs.appendFile(path.join(__dirname, "/raw-db/", element.data.partition + ".txt"), fileData);
-        await store.purgeAck(element.id, element.data.partition, element.data.key);
-        await element.markAsRead(true);
-        return element.data.data.size;
-    });
-    let samplesWritten = await Promise.all(multiWrites);
-    samplesWritten = samplesWritten.reduce((acc, e) => acc + e);
-    console.log(`<= T:${Date.now() - time} P:${payloads.length} S:${samplesWritten} #`);
-    //await store.purgeScan(5000, 5000);
-}
+// async function newMessageHandler(payloads) {
+//     let time = Date.now();
+//     let multiWrites = payloads.map(async element => {
+//         element.data = store.parsePurgePayload(element.raw);
+//         let fileData = "";
+//         const entryTime = Date.now();
+//         element.data.data.forEach((v, k) => {
+//             fileData += `\r\n${k},${entryTime},${Buffer.from(String(v)).toString("base64")}`;
+//         });
+//         await fs.appendFile(path.join(__dirname, "/raw-db/", element.data.partition + ".txt"), fileData);
+//         await store.purgeAck(element.id, element.data.partition, element.data.key);
+//         await element.markAsRead(true);
+//         return element.data.data.size;
+//     });
+//     let samplesWritten = await Promise.all(multiWrites);
+//     samplesWritten = samplesWritten.reduce((acc, e) => acc + e);
+//     console.log(`<= T:${Date.now() - time} P:${payloads.length} S:${samplesWritten} #`);
+//     //await store.purgeScan(5000, 5000);
+// }
 
 // let previousDate = Date.now();
 // let previousDBSize = 0;
@@ -137,27 +137,28 @@ async function newMessageHandler(payloads) {
         const holdTimeInSeconds = HotHoldTime / 1000;
         let shutdown = false;
         while (shutdown === false) {
+            const startTime = Date.now();
             try {
-                const startTime = Date.now();
-                const acquiredPartitions = await store.purgeAcquire((holdTimeInSeconds + 3), 1, holdTimeInSeconds * 3);
+                let summedAverage = 0.0;
+                const acquiredPartitions = await store.purgeAcquire((holdTimeInSeconds + 3), 100, holdTimeInSeconds * 3);
                 for (let index = 0; index < acquiredPartitions.length; index++) {
                     const partitionInfo = acquiredPartitions[index];
                     let fileData = "";
-                    const entryTime = Date.now();
                     partitionInfo.data.forEach((v, k) => {
-                        fileData += `\r\n${k},${entryTime},${Buffer.from(String(v)).toString("base64")}`;
+                        fileData += `\r\n${k},${startTime},${Buffer.from(String(v)).toString("base64")}`;
                     });
-                    await fs.appendFile(path.join(__dirname, "/raw-db/", element.data.partition + ".txt"), fileData);
-                    const releaseMessage = await store.purgeRelease(partitionInfo.tagName, partitionInfo.key, partitionInfo.releaseToken);
-                    console.log(`=> T:${Date.now() - startTime} Rate:${releaseMessage[1]}`);
+                    await fs.appendFile(path.join(__dirname, "/raw-db/", partitionInfo.key + ".txt"), fileData);
+                    const releaseMessage = await store.purgeRelease(partitionInfo.name, partitionInfo.key, partitionInfo.releaseToken);
+                    summedAverage += releaseMessage.rate;
                 }
+                console.log(`=> T:${Date.now() - startTime} P:${acquiredPartitions.length} Rate:${(summedAverage / acquiredPartitions.length).toFixed(2)}`);
             }
             catch (err) {
                 console.error(err);
             }
             finally {
                 //Killtime
-                await new Promise((acc, rej) => setTimeout(acc, (HotHoldTime / 4)));
+                await new Promise((acc, rej) => setTimeout(acc, 5000));
             }
         }
 
