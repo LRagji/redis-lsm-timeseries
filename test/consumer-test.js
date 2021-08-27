@@ -1165,13 +1165,57 @@ describe('Timeseries consumer tests', function () {
 
     });
 
+    it('Should ack partition after purging when correct parameters are presented with distribution function', async function () {
+
+        //SETUP
+        const partitionWidth = 5;
+        let inputData = new Map();
+        const recentActivityKey = "RecentActivity";
+
+        inputData.set("GapTag", new Map([[1, "One"], [2, "Two"], [10, "Ten"], [20, "Twenty"]]));
+        inputData.set("SerialTag", new Map([[1, "One"], [2, "Two"], [3, "Three"], [4, "Four"]]));
+
+        await target.initialize(partitionWidth, (name) => "FixedPartition");
+
+        //WRITE
+        const bytes = await target.write(inputData);
+
+        //Killtime
+        await new Promise((acc, rej) => setTimeout(acc, 1500));
+
+        //PURGE
+        const acquiredPartitions = await target.purgeAcquire(1, 10, 1000);
+
+        //PURGE-Release
+        // const returnValue = await target.purgeRelease(acquiredPartitions[0].name, acquiredPartitions[0].key, acquiredPartitions[0].releaseToken);
+        // const partitionKeyExists = await redisClient.exists(target._assembleKey(acquiredPartitions[0].name));
+        // const indexContainsPartitionKey = await redisClient.zscore(target._assembleKey(acquiredPartitions[0].key), acquiredPartitions[0].name);
+
+        //Read for acked tag
+        const ranges = new Map();
+        ranges.set("GapTag", { start: 0, end: 50 });
+        ranges.set("SerialTag", { start: 0, end: 50 });
+        const readResults = await readData(ranges);
+
+        //VERIFY
+        assert.deepStrictEqual(bytes > 1n, true);
+        assert.deepStrictEqual(acquiredPartitions.length === 4, true, `A:${acquiredPartitions.length} E:${4}`);
+        // assert.deepStrictEqual(returnValue.success, 1);
+        // assert.deepStrictEqual(Number.isFinite(returnValue.rate), true);
+        // assert.deepStrictEqual(partitionKeyExists, 0);
+        // assert.deepStrictEqual(indexContainsPartitionKey, null);
+        inputData.set("GapTag", new Map([[10, "Ten"], [20, "Twenty"]]))
+        assert.deepStrictEqual(readResults, inputData);
+
+    }).timeout(2500);
+
 });
 
 async function readData(ranges) {
     //READ Indexes
     const pages = await target.readIndex(ranges);
     const tagNames = Array.from(ranges.keys());
-   
+
     //READ Pages
     let asyncCommands = [];
     pages.forEach((pages, partitionName) => {
@@ -1196,15 +1240,3 @@ async function readData(ranges) {
     });
     return result;
 }
-
-// {
-//     error: null,
-//     payload: Map {
-//       'FixedPartition' => {
-//         data: [Array],
-//         relativePartitionStart: 14n,
-//         relativeActivity: 4n,
-//         partitionKey: 'TagDCJf38X0DrgIZNCgyp4+RZC0rkoLtvaUokoj7cKTE7MSomethings-0'
-//       }
-//     }
-//   }
