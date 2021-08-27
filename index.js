@@ -138,17 +138,16 @@ class SortedStore {
                     }
                     sortKey = BigInt(sortKey);
                     const partitionStart = sortKey - (sortKey % this._orderedPartitionWidth);
-                    const partitionName = `${partitionKey}${Seperator}${partitionStart}${Seperator}${AccumalatingFlag}`;
-                    const distrubutedPartitionName = `${this._partitionDistribution(partitionName)}${Seperator}${partitionStart}${Seperator}${AccumalatingFlag}`;
+                    const distributedPartitionName = `${this._partitionDistribution(partitionKey)}${Seperator}${partitionStart}${Seperator}${AccumalatingFlag}`;
                     const serializedItem = JSON.stringify({ 'p': item, 'u': `${sampleIngestionTime}-${this.instanceName}-${itemCounter}`, 't': `${partitionKey}` });
                     const relativeKeyFromPartitionStart = sortKey - partitionStart;
                     const epochRelativePartitionStart = this._epoch - partitionStart;
                     const epochRelativeActivityTime = sampleIngestionTime - this._epoch;
-                    const orderedTable = returnObject.payload.get(distrubutedPartitionName) || { data: [], "relativePartitionStart": epochRelativePartitionStart, "relativeActivity": epochRelativeActivityTime, "partitionKey": new Set() };
+                    const orderedTable = returnObject.payload.get(distributedPartitionName) || { data: [], "relativePartitionStart": epochRelativePartitionStart, "relativeActivity": epochRelativeActivityTime, "partitionKey": new Set() };
                     orderedTable.data.push(relativeKeyFromPartitionStart);
                     orderedTable.data.push(serializedItem);
                     orderedTable.partitionKey.add(partitionKey);
-                    returnObject.payload.set(distrubutedPartitionName, orderedTable);
+                    returnObject.payload.set(distributedPartitionName, orderedTable);
                     itemCounter++;
                 });
             }
