@@ -54,13 +54,14 @@ app.post('/get', (req, res) => {
 async function readData(ranges) {
     //READ Indexes
     const pages = await store.readIndex(ranges);
+    const tagNames = Array.from(ranges.keys());
 
     //READ Pages
     let asyncCommands = [];
     pages.forEach((pages, partitionName) => {
         pages.forEach((page) => {
             asyncCommands.push((async () => {
-                const sortedMap = await store.readPage(page.page, (sortKey) => page.start <= sortKey && sortKey <= page.end);
+                const sortedMap = await store.readPage(page.page, (sortKey, tagName) => tagNames.indexOf(tagName) > -1 && page.start <= sortKey && sortKey <= page.end);
                 return new Map([[partitionName, sortedMap]]);
             })());
         });
@@ -98,7 +99,7 @@ async function readData(ranges) {
             workerData: {
                 "HotHoldTime": HotHoldTime,
                 "coolDownTime": 5000,
-                "processInOneLoop":200,
+                "processInOneLoop": 200,
                 "redisConnectionString": localRedisConnectionString
             }
         });

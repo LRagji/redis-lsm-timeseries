@@ -38,6 +38,18 @@ describe('Timeseries consumer tests', function () {
         await assert.rejects(target.initialize, err => assert.strictEqual(err, 'Initialization Failed: EPOCH is misplaced with undefined.') == undefined);
     });
 
+    it('Should fail with initialization exception when partitionDistribution is set to invalid', async function () {
+
+        //VERIFY
+        await assert.rejects(() => target.initialize(undefined, "kkkk"), err => assert.strictEqual(err, 'Invalid parameter "partitionDistribution" should be a function.') == undefined);
+    });
+
+    it('Should fail with initialization exception when orderedPartitionWidth is set to invalid', async function () {
+
+        //VERIFY
+        await assert.rejects(() => target.initialize("ggg"), err => assert.strictEqual(err, "Parameter 'orderedPartitionWidth' is invalid: Cannot convert ggg to a BigInt") == undefined);
+    });
+
     it('Should not allow write when initialize is not called', async function () {
 
         //VERIFY
@@ -257,7 +269,7 @@ describe('Timeseries consumer tests', function () {
         //Index
         const indexKey = target._assembleKey("GapTag");
         const payloadInsertTime = BigInt(actualPayload.u.split(Seperator)[0]);
-        assert.strictEqual(payloadInsertTime >= EPOCH, true);
+        assert.strictEqual(payloadInsertTime >= EPOCH, true, `InsertTime ${payloadInsertTime} EPOCH ${EPOCH}`);
         const indexShouldExists = await redisClient.exists(indexKey);
         assert.strictEqual(indexShouldExists, 1);
         const indexScore = EPOCH - partitionStart;
@@ -1125,18 +1137,47 @@ describe('Timeseries consumer tests', function () {
         assert.deepStrictEqual(readResults, inputData);
     }).timeout(2500);
 
+    it('Should read chunk of data when correct data when presented with distribution function', async function () {
+
+        //SETUP
+        const partitionWidth = 10;
+        await target.initialize(partitionWidth, (name) => "FixedPartition")
+        let orderedData = new Map();
+        let startDate = Date.now();
+        for (let orderCounter = 0; orderCounter < 200; orderCounter++) {
+            orderedData.set((startDate + orderCounter), orderCounter.toString());
+        }
+        let inputData = new Map();
+        let ranges = new Map();
+        for (let partitionCounter = 0; partitionCounter < 10; partitionCounter++) {
+            inputData.set(`TagDCJf38X0DrgIZNCgyp4+RZC0rkoLtvaUokoj7cKTE7MSomethings-${partitionCounter}`, orderedData);
+            ranges.set(`TagDCJf38X0DrgIZNCgyp4+RZC0rkoLtvaUokoj7cKTE7MSomethings-${partitionCounter}`, { start: startDate, end: (startDate * 2) });
+        }
+
+        //EXECUTE
+        const returnValue = await target.write(inputData);
+
+        //READ
+        const result = await readData(ranges);
+
+        //VERIFY
+        assert.deepStrictEqual(result, inputData);
+
+    });
+
 });
 
 async function readData(ranges) {
     //READ Indexes
     const pages = await target.readIndex(ranges);
-
+    const tagNames = Array.from(ranges.keys());
+   
     //READ Pages
     let asyncCommands = [];
     pages.forEach((pages, partitionName) => {
         pages.forEach((page) => {
             asyncCommands.push((async () => {
-                const sortedMap = await target.readPage(page.page, (sortKey) => page.start <= sortKey && sortKey <= page.end);
+                const sortedMap = await target.readPage(page.page, (sortKey, tagName) => tagNames.indexOf(tagName) > -1 && page.start <= sortKey && sortKey <= page.end);
                 return new Map([[partitionName, sortedMap]]);
             })());
         });
@@ -1155,3 +1196,15 @@ async function readData(ranges) {
     });
     return result;
 }
+
+// {
+//     error: null,
+//     payload: Map {
+//       'FixedPartition' => {
+//         data: [Array],
+//         relativePartitionStart: 14n,
+//         relativeActivity: 4n,
+//         partitionKey: 'TagDCJf38X0DrgIZNCgyp4+RZC0rkoLtvaUokoj7cKTE7MSomethings-0'
+//       }
+//     }
+//   }

@@ -46,23 +46,35 @@ class SortedStore {
         this.purgeRelease = this.purgeRelease.bind(this);
     }
 
-    async initialize(orderedPartitionWidth = 120000n) {
-        this._orderedPartitionWidth = BigInt(orderedPartitionWidth);
+    async initialize(orderedPartitionWidth = 120000n, partitionDistribution = name => name) {
+        try {
+            this._orderedPartitionWidth = BigInt(orderedPartitionWidth);
+        }
+        catch (err) {
+            return Promise.reject("Parameter 'orderedPartitionWidth' is invalid: " + err.message);
+        }
+
+        if ({}.toString.call(partitionDistribution) !== '[object Function]') {
+            return Promise.reject(`Invalid parameter "partitionDistribution" should be a function.`);
+        }
+
         this.instanceHash = this._settingsHash({ "version": 1.0, "partitionWidth": this._orderedPartitionWidth.toString() });
         const serverTime = await this._redisClient.time();
         const serverTimeInMilliSeconds = BigInt(serverTime[0] + serverTime[1].substring(0, 3));
         await this._redisClient.set(this._assembleKey(EPOCHKey), serverTimeInMilliSeconds, SetOptionDonotOverwrite);
         this._epoch = await this._redisClient.get(this._assembleKey(EPOCHKey));
         this._epoch = parseInt(this._epoch, DecimalRadix);
+
         if (Number.isNaN(this._epoch)) {
             this._epoch = undefined;
             return Promise.reject(`Initialization Failed: EPOCH is misplaced with ${this._epoch}.`);
         }
-        else {
-            this.instanceName = shortid.generate();
-            this._epoch = BigInt(this._epoch);
-            return this._epoch;
-        }
+
+        this._partitionDistribution = partitionDistribution;
+        this.instanceName = shortid.generate();
+        this._epoch = BigInt(this._epoch);
+        return this._epoch;
+
     }
 
     async write(keyValuePairs) {
@@ -84,7 +96,7 @@ class SortedStore {
         transformed.payload.forEach((partition, partitionName) => {
             //TODO:Someday we can move this to MULTI-Redis Transaction, only promisying that call is tough across redis libraries.
             asyncCommands.push(this._redisClient.zadd(this._assembleKey(partitionName), ...partition.data));//Main partition table update.
-            asyncCommands.push(this._redisClient.zadd(this._assembleKey(partition.partitionKey), partition.relativePartitionStart, partitionName));//Indexing updating.
+            partition.partitionKey.forEach(partKey => asyncCommands.push(this._redisClient.zadd(this._assembleKey(partKey), partition.relativePartitionStart, partitionName)));//Indexing updating.
             asyncCommands.push(this._redisClient.zadd(this._assembleKey(RecentAcitivityKey), partition.relativeActivity, partitionName));//Recent activity
         });
 
@@ -127,14 +139,16 @@ class SortedStore {
                     sortKey = BigInt(sortKey);
                     const partitionStart = sortKey - (sortKey % this._orderedPartitionWidth);
                     const partitionName = `${partitionKey}${Seperator}${partitionStart}${Seperator}${AccumalatingFlag}`;
-                    const serializedItem = JSON.stringify({ 'p': item, 'u': `${sampleIngestionTime}-${this.instanceName}-${itemCounter}` });
+                    const distrubutedPartitionName = `${this._partitionDistribution(partitionName)}${Seperator}${partitionStart}${Seperator}${AccumalatingFlag}`;
+                    const serializedItem = JSON.stringify({ 'p': item, 'u': `${sampleIngestionTime}-${this.instanceName}-${itemCounter}`, 't': `${partitionKey}` });
                     const relativeKeyFromPartitionStart = sortKey - partitionStart;
                     const epochRelativePartitionStart = this._epoch - partitionStart;
                     const epochRelativeActivityTime = sampleIngestionTime - this._epoch;
-                    const orderedTable = returnObject.payload.get(partitionName) || { data: [], "relativePartitionStart": epochRelativePartitionStart, "relativeActivity": epochRelativeActivityTime, "partitionKey": partitionKey };
+                    const orderedTable = returnObject.payload.get(distrubutedPartitionName) || { data: [], "relativePartitionStart": epochRelativePartitionStart, "relativeActivity": epochRelativeActivityTime, "partitionKey": new Set() };
                     orderedTable.data.push(relativeKeyFromPartitionStart);
                     orderedTable.data.push(serializedItem);
-                    returnObject.payload.set(partitionName, orderedTable);
+                    orderedTable.partitionKey.add(partitionKey);
+                    returnObject.payload.set(distrubutedPartitionName, orderedTable);
                     itemCounter++;
                 });
             }
@@ -237,7 +251,7 @@ class SortedStore {
         return pages;
     }
 
-    async readPage(pagename, filter = sortKey => true) {
+    async readPage(pagename, filter = (sortKey, partitionKey) => true) {
         let partitionStart;
 
         if (this._epoch == null) {
@@ -276,13 +290,13 @@ class SortedStore {
         return { "start": start, "key": key };
     }
 
-    _parseRedisData(redisData, partitionStart, filter = () => true) {
+    _parseRedisData(redisData, partitionStart, filter = (sortKey, partitionKey) => true) {
         let returnMap = new Map();
         for (let index = 0; index < redisData.length; index += 2) {
             const sortKey = partitionStart + BigInt(redisData[index + 1]);
-            if (filter(sortKey)) {
-                const item = JSON.parse(redisData[index]).p;
-                returnMap.set(Number(sortKey), item);
+            const data = JSON.parse(redisData[index]);
+            if (filter(sortKey, data.t)) {
+                returnMap.set(Number(sortKey), data.p);
             }
         }
         return returnMap;
