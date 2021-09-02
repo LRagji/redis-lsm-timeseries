@@ -48,10 +48,10 @@ if(#acquiredPartitions < numberOfParitionsToPurge) then
         local partitionName = string.sub(completePartitionName,1,(string.find(completePartitionName,seperatorMatchFormat))-1)  --ABC-200
         local partitionIndexedName = string.sub(partitionName,1,(string.find(partitionName,seperatorMatchFormat))-1) --ABC
         local renamedPartition = partitionName..seperator..purgeFlag --ABC-200-pur
-        local existingScore = redis.call("ZSCORE",(spaceKey.. seperator .. partitionIndexedName),completePartitionName)
+        --local existingScore = redis.call("ZSCORE",(spaceKey.. seperator .. partitionIndexedName),completePartitionName)
 
-        redis.call("ZREM",(spaceKey.. seperator .. partitionIndexedName),completePartitionName)
-        redis.call("ZADD",(spaceKey.. seperator .. partitionIndexedName),existingScore,renamedPartition)
+        --redis.call("ZREM",(spaceKey.. seperator .. partitionIndexedName),completePartitionName)
+        --redis.call("ZADD",(spaceKey.. seperator .. partitionIndexedName),existingScore,renamedPartition)
 
         redis.call("RENAMENX",(spaceKey.. seperator .. completePartitionName),(spaceKey.. seperator .. renamedPartition))
 

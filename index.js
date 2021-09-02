@@ -234,7 +234,12 @@ class SortedStore {
                 let entries = { "partitionKey": partitionKey, pages: [] };
                 const response = await this._redisClient.zrangebyscore(this._assembleKey(partitionKey), range.rangeEnd, range.rangeStart, WITHSCORES);
                 for (let index = 0; index < response.length; index += 2) {
-                    entries.pages.push({ "page": response[index], "sortWeight": parseFloat(response[index + 1]), "start": range.actualStart, "end": range.actualEnd });
+                    const pagename = response[index];
+                    const partitionInfo = this._extractPartitionInfo(pagename)
+                    entries.pages.push(
+                        { "page": pagename, "sortWeight": parseFloat(response[index + 1]), "start": range.actualStart, "end": range.actualEnd },
+                        { "page": `${partitionInfo.key}${Seperator}${partitionInfo.start}${Seperator}${PurgeFlag}`, "sortWeight": parseFloat(response[index + 1]), "start": range.actualStart, "end": range.actualEnd }
+                    );
                 }
                 return entries;
             })());
@@ -278,14 +283,14 @@ class SortedStore {
     }
 
     _extractPartitionInfo(partitionName) {
-        let seperatorIndex = partitionName.lastIndexOf(Seperator);
-        partitionName = partitionName.substring(0, seperatorIndex);
+        let seperatorIndex = partitionName.lastIndexOf(Seperator); //ABC-0-acc
+        partitionName = partitionName.substring(0, seperatorIndex);//ABC-0
         seperatorIndex = partitionName.lastIndexOf(Seperator);
         if (seperatorIndex < 0 || (seperatorIndex + 1) >= partitionName.length) {
             throw new Error("Seperator misplaced @" + seperatorIndex);
         }
-        const start = BigInt(partitionName.substring(seperatorIndex + 1));
-        const key = partitionName.substring(0, seperatorIndex);
+        const start = BigInt(partitionName.substring(seperatorIndex + 1));//0
+        const key = partitionName.substring(0, seperatorIndex);//ABC
         return { "start": start, "key": key };
     }
 
@@ -295,6 +300,11 @@ class SortedStore {
             const sortKey = partitionStart + BigInt(redisData[index + 1]);
             const data = JSON.parse(redisData[index]);
             if (filter(sortKey, data.t)) {
+                //const existingData = returnMap.get(Number(sortKey)) || new Map();
+                //const existingSamples = existingData.get(data.t) || [];
+                //existingSamples.push(data.p);
+                //existingData.set(data.t, existingSamples);
+                //returnMap.set(Number(sortKey), existingData);
                 returnMap.set(Number(sortKey), data.p);
             }
         }
