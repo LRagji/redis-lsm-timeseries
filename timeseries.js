@@ -16,7 +16,8 @@ module.exports = class Timeseries {
             "MaximumTagsInOneRead": 100,
             "MaximumTagNameLength": 200,
             "MaximumPartitionsScansInOneRead": 100,
-            "PartitionTimeWidth": 60000
+            "PartitionTimeWidth": 60000,
+            "PurgeMarker": "P"
         }) {
         //Validations
         if ({}.toString.call(tagPartitionResolver) !== '[object Function]') {
@@ -109,8 +110,11 @@ module.exports = class Timeseries {
         let asyncCommands = [];
         transformed.ranges.forEach((ranges, partitionName) => {
             const redisClient = this._partitionRedisConnectionResolver(partitionName);
+            const purgedPartitionName = `${partitionName}${this._settings.Seperator}${this._settings.PurgeMarker}`;
             asyncCommands = asyncCommands.concat(ranges.map(async range => {
-                range.response = await redisClient.zrangebyscore(this._assembleRedisKey(partitionName), range.start, range.end, WITHSCORES);//Main partition Query
+                const purgingDataResponse = await redisClient.zrangebyscore(this._assembleRedisKey(purgedPartitionName), range.start, range.end, WITHSCORES);//Purging partition Query
+                const activeDataResponse = await redisClient.zrangebyscore(this._assembleRedisKey(partitionName), range.start, range.end, WITHSCORES);//Active partition Query
+                range.response = purgingDataResponse.concat(activeDataResponse);//Sequence matters cause of time sorted keys.
                 return range;
             }));
         });
