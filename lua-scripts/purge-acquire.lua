@@ -36,6 +36,7 @@ if(#acquiredPartitions < numberOfParitionsToPurge and timeThreshold > 0) then
        
         redis.call("RENAMENX",(spaceKey.. seperator .. completePartitionName),(spaceKey.. seperator .. renamedPartition))
         redis.call("ZREM",ActivityKey,completePartitionName)
+        redis.call("ZREM",SamplesPerPartitionKey,completePartitionName)
         redis.call("ZADD",PurgePendingKey,currentRelativeTimeInSeconds,completePartitionName)
     
         local dataToBePurged = redis.call('ZRANGE',(spaceKey ..  seperator .. completePartitionName ),0,-1,'WITHSCORES')
@@ -52,6 +53,7 @@ if(#acquiredPartitions < numberOfParitionsToPurge and countThreshold > 0 ) then
        
         redis.call("RENAMENX",(spaceKey.. seperator .. completePartitionName),(spaceKey.. seperator .. renamedPartition))
         redis.call("ZREM",ActivityKey,completePartitionName)
+        redis.call("ZREM",SamplesPerPartitionKey,completePartitionName)
         redis.call("ZADD",PurgePendingKey,currentRelativeTimeInSeconds,completePartitionName)
     
         local dataToBePurged = redis.call('ZRANGE',(spaceKey ..  seperator .. completePartitionName ),0,-1,'WITHSCORES')

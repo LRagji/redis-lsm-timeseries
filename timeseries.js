@@ -86,7 +86,7 @@ module.exports = class Timeseries {
         this._minimum = this._minimum.bind(this);
         this._settingsHash = this._settingsHash.bind(this);
         this._assembleRedisKey = this._assembleRedisKey.bind(this);
-        this._extractPartitionInfo = this._extractPartitionInfo(this);
+        this._extractPartitionInfo = this._extractPartitionInfo.bind(this);
         this._parsePartitionData = this._parsePartitionData.bind(this);
         this._computeTagSpaceStart = this._computeTagSpaceStart.bind(this);
         this._validateTransformReadParameters = this._validateTransformReadParameters.bind(this);
@@ -171,6 +171,9 @@ module.exports = class Timeseries {
     }
 
     async purgeAcquire(scriptoServer, timeThreshold, countThreshold, reAcquireTimeout, partitionsToAcquire = 10) {
+        if (scriptoServer == null) {
+            return Promise.reject("Parameter 'scriptoServer' is invalid: Should be an instance of redis-scripto.");
+        }
         try {
             timeThreshold = BigInt(timeThreshold);
         }
@@ -191,9 +194,6 @@ module.exports = class Timeseries {
         }
         catch (err) {
             return Promise.reject("Parameter 'reAcquireTimeout' is invalid: " + err.message);
-        }
-        if (scriptoServer == null) {
-            return Promise.reject("Parameter 'scriptoServer' is invalid: Should be an instance of redis-scripto.");
         }
 
         scriptoServer.loadFromDir(path.join(__dirname, LUA_SCRIPT_DIR_NAME));
@@ -235,6 +235,29 @@ module.exports = class Timeseries {
 
     async purgeRelease(scriptoServer, releaseToken) {
 
+        if (scriptoServer == null) {
+            return Promise.reject("Parameter 'scriptoServer' is invalid: Should be an instance of redis-scripto.");
+        }
+
+        if (releaseToken == undefined || releaseToken === "") {
+            return Promise.reject("Invalid parameter 'releaseToken'.");
+        }
+        const keys = [
+            this._assembleKey(this._settings.PurgePendingKey),
+            this._assembleKey(`${releaseToken}${this._settings.Seperator}${this._settings.PurgeMarker}`)
+        ];
+        const args = [
+            releaseToken
+        ];
+        const response = await new Promise((acc, rej) => {
+            this._scriptManager.run(PURGE_RELEASE_SCRIPT_NAME, keys, args, (err, result) => {
+                if (err !== null) {
+                    return rej(err);
+                }
+                acc(result);
+            });
+        });
+        return response === 1;
     }
 
     _validateTransformReadParameters(tagRanges) {
@@ -403,8 +426,6 @@ module.exports = class Timeseries {
     }
 
     _extractPartitionInfo(partitionName) {
-        // let seperatorIndex = partitionName.lastIndexOf(Seperator); //ABC-0-acc
-        // partitionName = partitionName.substring(0, seperatorIndex);//ABC-0
         let seperatorIndex = partitionName.lastIndexOf(this._settings.Seperator);
         if (seperatorIndex < 0 || (seperatorIndex + 1) >= partitionName.length) {
             throw new Error("Seperator misplaced @" + seperatorIndex);
