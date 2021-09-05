@@ -33,6 +33,7 @@
   "homepage": "https://github.com/LRagji/redis-lsm-timeseries#readme",
   "dependencies": {
     "redis-scripto": "^0.1.3",
+    "redis-scripto2": "^0.2.2",
     "shortid": "^2.2.16"
   },
   "devDependencies": {

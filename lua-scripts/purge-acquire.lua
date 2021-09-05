@@ -1,72 +1,61 @@
 --This script is not redis cluster compatible as it uses dynamic keys at runtime which are renamed apart from KEYS passed in.
-local recentActivityKey = KEYS[1]
-local pendingPurgeKey = KEYS[2]
+local ActivityKey = KEYS[1]
+local SamplesPerPartitionKey = KEYS[2]
+local PurgePendingKey = KEYS[3]
 
-local purgeThresholdInSeconds = tonumber(ARGV[1])
-local epochInSeconds = tonumber(ARGV[2])
-local numberOfParitionsToPurge = tonumber(ARGV[3])
-local pendingTimeoutInSeconds = tonumber(ARGV[4])
-local instanceToken = ARGV[5]
-local spaceKey = ARGV[6]
-local seperator = ARGV[7]
-local purgeFlag = ARGV[8]
+local partitionsToAcquire = tonumber(ARGV[1])
+local timeThreshold = tonumber(ARGV[2])
+local countThreshold = tonumber(ARGV[3])
+local reAcquireTimeout = tonumber(ARGV[4])
+local instanceHash = ARGV[5]
+local seperator = ARGV[6]
+local spaceKey = ARGV[7]
+local purgeMarker = ARGV[8]
 
-local seperatorMatchFormat = seperator .."[^".. seperator .."]*$"
 local acquiredPartitions = {}
 
 local tempTime = redis.call("TIME")
 local currentTimestampInSeconds = tonumber(tempTime[1])
-local currentRelativeTimeInSeconds = currentTimestampInSeconds - epochInSeconds
-local relativeEndTimeInSeconds = (currentTimestampInSeconds - purgeThresholdInSeconds) - epochInSeconds
-local relativePendingTimeoutInSeconds = (currentTimestampInSeconds - pendingTimeoutInSeconds) - epochInSeconds
+local timeTillToAcquirePartitions = (currentTimestampInSeconds - timeThreshold)
+local timeTillReAcquirePartitions = (currentTimestampInSeconds - reAcquireTimeout)
 
-if relativeEndTimeInSeconds == 0 then 
-    relativeEndTimeInSeconds = 1
-end
-
-if relativePendingTimeoutInSeconds == 0 then 
-    relativePendingTimeoutInSeconds = 1
-end
-
-local timedOutPartitions = redis.call('ZRANGEBYSCORE',pendingPurgeKey,"-inf",relativePendingTimeoutInSeconds,"LIMIT",0, numberOfParitionsToPurge)
+local timedOutPartitions = redis.call('ZRANGEBYSCORE',PurgePendingKey,"-inf",timeTillReAcquirePartitions,"LIMIT",0, partitionsToAcquire)
 for index = 1, #timedOutPartitions do
-    local timedOutPartition = timedOutPartitions[index]
-    redis.call("ZREM",pendingPurgeKey,timedOutPartition)
-    timedOutPartition = cjson.decode(timedOutPartition)
-    local dataToBePurged = redis.call('ZRANGE',(spaceKey ..  seperator .. timedOutPartition[1]),0,-1,'WITHSCORES')
-    table.insert(timedOutPartition[2],instanceToken)
-    timedOutPartition = cjson.encode(timedOutPartition)
-    redis.call("ZADD",pendingPurgeKey,currentRelativeTimeInSeconds,timedOutPartition)
-    table.insert(acquiredPartitions,{timedOutPartition,dataToBePurged})
+    local timedOutPartitionName = timedOutPartitions[index]
+    local dataToBePurged = redis.call('ZRANGE',(spaceKey ..  seperator .. timedOutPartitionName ..purgeMarker ),0,-1,'WITHSCORES')
+    redis.call("ZADD",PurgePendingKey,currentRelativeTimeInSeconds,timedOutPartitionName)
+    table.insert(acquiredPartitions,{timedOutPartitionName,dataToBePurged})
 end
 
-if(#acquiredPartitions < numberOfParitionsToPurge) then
-    local newPartitions = redis.call('ZRANGEBYSCORE',recentActivityKey,"-inf",(relativeEndTimeInSeconds * 1000),"LIMIT",0, (numberOfParitionsToPurge - #acquiredPartitions))
+if(#acquiredPartitions < numberOfParitionsToPurge and timeThreshold > 0) then
+    local newPartitions = redis.call('ZRANGEBYSCORE',ActivityKey,"-inf",timeTillToAcquirePartitions,"LIMIT",0, (partitionsToAcquire - #acquiredPartitions))
    
     for index = 1, #newPartitions do
-        local completePartitionName = newPartitions[index] --ABC-200-acc
-        local partitionName = string.sub(completePartitionName,1,(string.find(completePartitionName,seperatorMatchFormat))-1)  --ABC-200
-        local partitionIndexedName = string.sub(partitionName,1,(string.find(partitionName,seperatorMatchFormat))-1) --ABC
-        local renamedPartition = partitionName..seperator..purgeFlag --ABC-200-pur
-        --local existingScore = redis.call("ZSCORE",(spaceKey.. seperator .. partitionIndexedName),completePartitionName)
-
-        --redis.call("ZREM",(spaceKey.. seperator .. partitionIndexedName),completePartitionName)
-        --redis.call("ZADD",(spaceKey.. seperator .. partitionIndexedName),existingScore,renamedPartition)
-
+        local completePartitionName = newPartitions[index] --ABC-200
+        local renamedPartition = completePartitionName..seperator..purgeMarker --ABC-200-pur
+       
         redis.call("RENAMENX",(spaceKey.. seperator .. completePartitionName),(spaceKey.. seperator .. renamedPartition))
+        redis.call("ZREM",ActivityKey,completePartitionName)
+        redis.call("ZADD",PurgePendingKey,currentRelativeTimeInSeconds,completePartitionName)
+    
+        local dataToBePurged = redis.call('ZRANGE',(spaceKey ..  seperator .. completePartitionName ),0,-1,'WITHSCORES')
+        table.insert(acquiredPartitions,{completePartitionName,dataToBePurged})
+    end 
+end
 
-        redis.call("ZREM",recentActivityKey,completePartitionName)
-        
-        local pendingMember = {}
-        local tokensList = {}
-        table.insert(tokensList,instanceToken)
-        table.insert(pendingMember,renamedPartition)
-        table.insert(pendingMember,tokensList)
-        pendingMember = cjson.encode(pendingMember)
-        redis.call("ZADD",pendingPurgeKey,currentRelativeTimeInSeconds,pendingMember)
-
-        local dataToBePurged = redis.call('ZRANGE',(spaceKey ..  seperator .. renamedPartition),0,-1,'WITHSCORES')
-        table.insert(acquiredPartitions,{pendingMember,dataToBePurged})
+if(#acquiredPartitions < numberOfParitionsToPurge and countThreshold > 0 ) then
+    local newPartitions = redis.call('ZRANGEBYSCORE',SamplesPerPartitionKey,countThreshold,"+inf","LIMIT",0, (partitionsToAcquire - #acquiredPartitions))
+   
+    for index = 1, #newPartitions do
+        local completePartitionName = newPartitions[index] --ABC-200
+        local renamedPartition = completePartitionName..seperator..purgeMarker --ABC-200-pur
+       
+        redis.call("RENAMENX",(spaceKey.. seperator .. completePartitionName),(spaceKey.. seperator .. renamedPartition))
+        redis.call("ZREM",ActivityKey,completePartitionName)
+        redis.call("ZADD",PurgePendingKey,currentRelativeTimeInSeconds,completePartitionName)
+    
+        local dataToBePurged = redis.call('ZRANGE',(spaceKey ..  seperator .. completePartitionName ),0,-1,'WITHSCORES')
+        table.insert(acquiredPartitions,{completePartitionName,dataToBePurged})
     end 
 end
 

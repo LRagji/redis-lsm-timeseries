@@ -2,6 +2,9 @@ const Crypto = require("crypto");
 
 //Domain constants
 const WITHSCORES = "WITHSCORES";
+const LUA_SCRIPT_DIR_NAME = "lua-scripts";
+const PURGE_ACQUIRE_SCRIPT_NAME = "purge-acquire";
+const PURGE_RELEASE_SCRIPT_NAME = "purge-release";
 
 module.exports = class Timeseries {
 
@@ -11,6 +14,7 @@ module.exports = class Timeseries {
         settings = {
             "ActivityKey": "Activity",
             "SamplesPerPartitionKey": "Stats",
+            "PurgePendingKey": "Pending",
             "Seperator": "=",
             "MaximumTagsInOneWrite": 2000,
             "MaximumTagsInOneRead": 100,
@@ -47,7 +51,21 @@ module.exports = class Timeseries {
 
         this._tagPartitionResolver = tagPartitionResolver;
         this._partitionRedisConnectionResolver = partitionRedisConnectionResolver;
-        this._tagNumericIdentityResolver = tagName => BigInt(tagNumericIdentityResolver(tagName));
+        this._tagNumericIdentityResolver = tagName => {
+            const redisMaximumScore = 9007199254740992n// Maximum score:https://redis.io/commands/ZADD
+            const maxLimit = (redisMaximumScore / settings.PartitionTimeWidth);
+            const tagId = BigInt(tagNumericIdentityResolver(tagName));
+
+            if (tagId < 1n) {
+                throw new Error("Tag numeric id's cannot be less than 1.");
+            }
+
+            if (tagId > maxLimit) {
+                throw new Error(`Tag numeric id's cannot be greater than ${maxLimit}.`);
+            }
+            return tagId;
+        }
+
         this._settings = settings;
         this._settings.version = "1.0"
 
@@ -62,10 +80,15 @@ module.exports = class Timeseries {
         //local functions
         this.write = this.write.bind(this);
         this.read = this.read.bind(this);
+        this.purgeAcquire = this.purgeAcquire.bind(this);
+        this.purgeRelease = this.purgeRelease.bind(this);
         this._maximum = this._maximum.bind(this);
         this._minimum = this._minimum.bind(this);
         this._settingsHash = this._settingsHash.bind(this);
         this._assembleRedisKey = this._assembleRedisKey.bind(this);
+        this._extractPartitionInfo = this._extractPartitionInfo(this);
+        this._parsePartitionData = this._parsePartitionData.bind(this);
+        this._computeTagSpaceStart = this._computeTagSpaceStart.bind(this);
         this._validateTransformReadParameters = this._validateTransformReadParameters.bind(this);
         this._validateTransformWriteParameters = this._validateTransformWriteParameters.bind(this);
     }
@@ -125,20 +148,17 @@ module.exports = class Timeseries {
             if (e.status !== "fulfilled") {
                 throw new Error("Failed to complete operation:" + e.reason);
             } else {
-                const timeMap = returnData.get(e.value.tagName) || new Map();
-                for (let index = 0; index < e.value.response.length; index += 2) {
-                    const time = (BigInt(e.value.response[index + 1]) - e.value.tagId) + e.value.timeOffset;
-                    const packet = JSON.parse(e.value.response[index]);
-                    packet.rid = BigInt(packet.rid);
-                    let exisitingData = timeMap.get(time);
-                    if (exisitingData == null ||
-                        exisitingData.rid < packet.rid ||
-                        (exisitingData.rid === packet.rid && exisitingData.ctr < packet.ctr)) {
-                        exisitingData = packet;
+                this._parsePartitionData(e.value.response, e.value.timeOffset, (tagId) => {
+                    if (e.value.tagId !== tagId) {
+                        throw new Error(`Parsing Failed! Tagids donot match ${e.value.tagName} (${e.value.tagId}) <> (${tagId}).`);
                     }
-                    timeMap.set(time, exisitingData);
-                }
-                returnData.set(e.value.tagName, timeMap);
+                    return returnData.get(e.value.tagName) || new Map();
+                }, (tagId, timeMap) => {
+                    if (e.value.tagId !== tagId) {
+                        throw new Error(`Parsing Failed! Tagids donot match ${e.value.tagName} (${e.value.tagId}) <> (${tagId}).`);
+                    }
+                    return returnData.set(e.value.tagName, timeMap);
+                });
             }
         });
         returnData.forEach((timeMap, tagName) => {
@@ -148,6 +168,73 @@ module.exports = class Timeseries {
             returnData.set(tagName, timeMap);
         })
         return returnData;
+    }
+
+    async purgeAcquire(scriptoServer, timeThreshold, countThreshold, reAcquireTimeout, partitionsToAcquire = 10) {
+        try {
+            timeThreshold = BigInt(timeThreshold);
+        }
+        catch (err) {
+            return Promise.reject("Parameter 'timeThreshold' is invalid: " + err.message);
+        }
+        try {
+            countThreshold = BigInt(countThreshold);
+        }
+        catch (err) {
+            return Promise.reject("Parameter 'countThreshold' is invalid: " + err.message);
+        }
+        try {
+            reAcquireTimeout = BigInt(reAcquireTimeout);
+            if (reAcquireTimeout <= 0) {
+                throw new Error("Cannot be less then or equal to zero.");
+            }
+        }
+        catch (err) {
+            return Promise.reject("Parameter 'reAcquireTimeout' is invalid: " + err.message);
+        }
+        if (scriptoServer == null) {
+            return Promise.reject("Parameter 'scriptoServer' is invalid: Should be an instance of redis-scripto.");
+        }
+
+        scriptoServer.loadFromDir(path.join(__dirname, LUA_SCRIPT_DIR_NAME));
+
+        const keys = [
+            this._assembleKey(this._settings.ActivityKey),
+            this._assembleKey(this._settings.SamplesPerPartitionKey),
+            this._assembleKey(this._settings.PurgePendingKey)
+        ];
+        const args = [
+            partitionsToAcquire,
+            timeThreshold,
+            countThreshold,
+            reAcquireTimeout,
+            this.instanceHash,
+            this._settings.Seperator,
+            this._settings.PurgeMarker
+        ];
+
+        const acquiredData = await new Promise((acc, rej) => {
+            scriptoServer.run(PURGE_ACQUIRE_SCRIPT_NAME, keys, args, (err, result) => {
+                if (err !== null) {
+                    return rej(err);
+                }
+                acc(result);
+            });
+        });
+
+        return acquiredData.map(serializedData => {
+            const acquiredPartitionInfo = {};
+            const partitionInfo = this._extractPartitionInfo(serializedData[0]);
+            acquiredPartitionInfo.releaseToken = serializedData[0];
+            acquiredPartitionInfo.name = partitionInfo.partition;
+            acquiredPartitionInfo.data = new Map();
+            this._parsePartitionData(serializedData[1], partitionInfo.start, tagId => acquiredPartitionInfo.data.get(tagId) || new Map(), acquiredPartitionInfo.set);
+            return acquiredPartitionInfo;
+        });
+    }
+
+    async purgeRelease(scriptoServer, releaseToken) {
+
     }
 
     _validateTransformReadParameters(tagRanges) {
@@ -189,14 +276,15 @@ module.exports = class Timeseries {
                 return;
             }
             const tagId = this._tagNumericIdentityResolver(tagName);
+            const tagOffset = this._computeTagSpaceStart(tagId);
             while (start < end) {
                 const partitionName = `${this._tagPartitionResolver(tagName)}${this._settings.Seperator}${start}`;
                 let readFrom = this._maximum(start, BigInt(range.start));
                 let readTill = this._minimum((start + (this._settings.PartitionTimeWidth - 1n)), end)
                 readFrom = readFrom === 0n ? readFrom : readFrom - start;
                 readTill = readTill === 0n ? readTill : readTill - start;
-                readFrom += tagId;
-                readTill += tagId;
+                readFrom += tagOffset;
+                readTill += tagOffset;
                 const ranges = returnObject.ranges.get(partitionName) || [];
                 ranges.push({ "start": readFrom, "end": readTill, "tagName": tagName, "tagId": tagId, "timeOffset": start });
                 returnObject.ranges.set(partitionName, ranges);
@@ -252,6 +340,7 @@ module.exports = class Timeseries {
                     }
                     sampleTime = BigInt(sampleTime);
                     const partitionStart = sampleTime - (sampleTime % this._settings.PartitionTimeWidth);
+                    const tagId = this._tagNumericIdentityResolver(tagName);
                     const partitionName = `${this._tagPartitionResolver(tagName)}${this._settings.Seperator}${partitionStart}`;
                     if (partitionName === this._settings.ActivityKey) {
                         returnObject.error = `Conflicting partition name with Reserved Key for "Activity" (${partitionName}).`;
@@ -261,9 +350,12 @@ module.exports = class Timeseries {
                         returnObject.error = `Conflicting partition name with Reserved Key for "SamplesPerPartitionKey" (${partitionName}).`;
                         return returnObject;
                     }
+                    if (partitionName === this._settings.PurgePendingKey) {
+                        returnObject.error = `Conflicting partition name with Reserved Key for "PurgePendingKey" (${partitionName}).`;
+                        return returnObject;
+                    }
                     const serializedSample = JSON.stringify({ 'pay': sample, 'rid': requestId.toString(), 'ctr': sampleCounter });
-                    const tagId = this._tagNumericIdentityResolver(tagName);
-                    const sampleScore = BigInt(tagId) + (sampleTime - partitionStart);
+                    const sampleScore = this._computeTagSpaceStart(tagId) + (sampleTime - partitionStart);
                     const scoreTable = returnObject.payload.get(partitionName) || new Map();
                     scoreTable.set(serializedSample, sampleScore);
                     returnObject.payload.set(partitionName, scoreTable);
@@ -283,6 +375,43 @@ module.exports = class Timeseries {
         }
 
         return returnObject;
+    }
+
+    _parsePartitionData(rawResponse, partitionStart, getTimeMap, setTimeMap) {
+        for (let index = 0; index < rawResponse.length; index += 2) {
+            const score = BigInt(rawResponse[index + 1]);
+            const packet = JSON.parse(rawResponse[index]);
+            const time = (score % this._settings.PartitionTimeWidth) + partitionStart;
+            const tagId = ((score - (score % this._settings.PartitionTimeWidth)) / this._settings.PartitionTimeWidth) + 1n;
+            const timeMap = getTimeMap(tagId);
+            packet.rid = BigInt(packet.rid);
+            let exisitingData = timeMap.get(time);
+            if (exisitingData == null ||
+                exisitingData.rid < packet.rid ||
+                (exisitingData.rid === packet.rid && exisitingData.ctr < packet.ctr)) {
+                exisitingData = packet;
+            }
+            timeMap.set(time, exisitingData);
+            setTimeMap(tagId, timeMap);
+        }
+    }
+
+    _computeTagSpaceStart(tagId) {
+        const tagIdSpaceEnd = (tagId * this._settings.PartitionTimeWidth) - 1n;
+        const tagIdSpaceStart = tagIdSpaceEnd - (this._settings.PartitionTimeWidth - 1n);
+        return tagIdSpaceStart;
+    }
+
+    _extractPartitionInfo(partitionName) {
+        // let seperatorIndex = partitionName.lastIndexOf(Seperator); //ABC-0-acc
+        // partitionName = partitionName.substring(0, seperatorIndex);//ABC-0
+        let seperatorIndex = partitionName.lastIndexOf(this._settings.Seperator);
+        if (seperatorIndex < 0 || (seperatorIndex + 1) >= partitionName.length) {
+            throw new Error("Seperator misplaced @" + seperatorIndex);
+        }
+        const start = BigInt(partitionName.substring(seperatorIndex + 1));//0
+        const key = partitionName.substring(0, seperatorIndex);//ABC
+        return { "start": start, "partition": key };
     }
 
     _settingsHash(settings) {
