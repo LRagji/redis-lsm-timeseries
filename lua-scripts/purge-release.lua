@@ -3,9 +3,8 @@ local Partition = KEYS[2]
 
 local purgeMember = ARGV[1]
 
-redis.call("ZREM",pendingPurgeKey,purgeMember)
+redis.call("ZREM",PurgePendingKey,purgeMember)
 redis.call("DEL",Partition)
-table.insert(returnValues,1)
 
 return 1
 

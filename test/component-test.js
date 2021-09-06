@@ -72,11 +72,18 @@ describe('Timeseries consumer tests', function () {
         const writeResult = await target.write(inputData);
 
         //Purge
-        const readResults = await target.purgeAcquire(scriptManager, -1, 4, 1);
+        const purgeResults = await target.purgeAcquire(scriptManager, -1, 4, 1);
 
-        console.log(readResults[0].data);
+        //Release
+        const releaseResults = await target.purgeRelease(scriptManager, purgeResults[0].releaseToken);
+
         //VERIFY
         assert.strictEqual(writeResult, true);
-        assert.deepStrictEqual(readResults, inputData);
+        assert.strictEqual(purgeResults.length, 1);
+        assert.strictEqual(purgeResults[0].name !== "" && purgeResults[0].name !== null, true);
+        assert.strictEqual(purgeResults[0].releaseToken !== "" && purgeResults[0].releaseToken !== null, true);
+        const tag = "SerialTag";
+        assert.deepStrictEqual(purgeResults[0].data.get(BigInt(hash(tag))), inputData.get(tag));
+        assert.deepStrictEqual(releaseResults, true);
     });
 });

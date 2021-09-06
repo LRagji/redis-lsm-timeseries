@@ -167,7 +167,7 @@ module.exports = class Timeseries {
                 timeMap.set(time, payload.pay);
             });
             returnData.set(tagName, timeMap);
-        })
+        });
         return returnData;
     }
 
@@ -228,7 +228,13 @@ module.exports = class Timeseries {
             acquiredPartitionInfo.releaseToken = serializedData[0];
             acquiredPartitionInfo.name = partitionInfo.partition;
             acquiredPartitionInfo.data = new Map();
-            this._parsePartitionData(serializedData[1], partitionInfo.start, tagId => acquiredPartitionInfo.data.get(tagId) || new Map(), acquiredPartitionInfo.set);
+            this._parsePartitionData(serializedData[1], partitionInfo.start, tagId => acquiredPartitionInfo.data.get(tagId) || new Map(), acquiredPartitionInfo.data.set.bind(acquiredPartitionInfo.data));
+            acquiredPartitionInfo.data.forEach((timeMap, tagName) => {
+                timeMap.forEach((payload, time) => {
+                    timeMap.set(time, payload.pay);
+                });
+                acquiredPartitionInfo.data.set(tagName, timeMap);
+            })
             return acquiredPartitionInfo;
         });
     }
@@ -247,10 +253,10 @@ module.exports = class Timeseries {
             this._assembleRedisKey(`${releaseToken}${this._settings.Seperator}${this._settings.PurgeMarker}`)
         ];
         const args = [
-            releaseToken
+            `${releaseToken}${this._settings.Seperator}${this._settings.PurgeMarker}`
         ];
         const response = await new Promise((acc, rej) => {
-            this._scriptManager.run(PURGE_RELEASE_SCRIPT_NAME, keys, args, (err, result) => {
+            scriptoServer.run(PURGE_RELEASE_SCRIPT_NAME, keys, args, (err, result) => {
                 if (err !== null) {
                     return rej(err);
                 }
