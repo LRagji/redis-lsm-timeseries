@@ -1,4 +1,5 @@
 const Crypto = require("crypto");
+const path = require("path");
 
 //Domain constants
 const WITHSCORES = "WITHSCORES";
@@ -199,9 +200,9 @@ module.exports = class Timeseries {
         scriptoServer.loadFromDir(path.join(__dirname, LUA_SCRIPT_DIR_NAME));
 
         const keys = [
-            this._assembleKey(this._settings.ActivityKey),
-            this._assembleKey(this._settings.SamplesPerPartitionKey),
-            this._assembleKey(this._settings.PurgePendingKey)
+            this._assembleRedisKey(this._settings.ActivityKey),
+            this._assembleRedisKey(this._settings.SamplesPerPartitionKey),
+            this._assembleRedisKey(this._settings.PurgePendingKey)
         ];
         const args = [
             partitionsToAcquire,
@@ -212,7 +213,6 @@ module.exports = class Timeseries {
             this._settings.Seperator,
             this._settings.PurgeMarker
         ];
-
         const acquiredData = await new Promise((acc, rej) => {
             scriptoServer.run(PURGE_ACQUIRE_SCRIPT_NAME, keys, args, (err, result) => {
                 if (err !== null) {
@@ -243,8 +243,8 @@ module.exports = class Timeseries {
             return Promise.reject("Invalid parameter 'releaseToken'.");
         }
         const keys = [
-            this._assembleKey(this._settings.PurgePendingKey),
-            this._assembleKey(`${releaseToken}${this._settings.Seperator}${this._settings.PurgeMarker}`)
+            this._assembleRedisKey(this._settings.PurgePendingKey),
+            this._assembleRedisKey(`${releaseToken}${this._settings.Seperator}${this._settings.PurgeMarker}`)
         ];
         const args = [
             releaseToken
