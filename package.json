@@ -5,7 +5,10 @@
   "main": "index.js",
   "scripts": {
     "mocha": " nyc --reporter=html --reporter=text mocha",
-    "test": "npm run redisstart && npm run mocha && npm run redisstop && npm run redisstart && env REDISCLIENT=1 npm run mocha && npm run redisstop",
+    "test:macos": "npm run redisstart && npm run mocha && npm run redisstop && npm run redisstart && env REDISCLIENT=1 npm run mocha && npm run redisstop",
+    "test:windows": "npm run redisstart && npm run mocha && npm run redisstop && npm run redisstart && env REDISCLIENT=1 npm run mocha && npm run redisstop",
+    "test:nix": "npm run redisstart && npm run mocha && npm run redisstop && npm run redisstart && env REDISCLIENT=1 npm run mocha && npm run redisstop",
+    "test": "run-script-os",
     "redisstop": "docker stop streamz",
     "redisstart": "npm run redisstop || node -v && docker run --name streamz -p 6379:6379 -itd --rm redis:latest",
     "rediscli": "docker exec -it streamz redis-cli",
@@ -44,6 +47,7 @@
     "mocha": "^9.0.2",
     "nyc": "^15.1.0",
     "redis": "^3.1.2",
-    "redis-streams-broker": "0.0.12"
+    "redis-streams-broker": "0.0.12",
+    "run-script-os": "^1.1.6"
   }
 }
