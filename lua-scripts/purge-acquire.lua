@@ -18,12 +18,14 @@ local currentTimestampInSeconds = tonumber(tempTime[1])
 local timeTillToAcquirePartitions = (currentTimestampInSeconds - timeThreshold)
 local timeTillReAcquirePartitions = (currentTimestampInSeconds - reAcquireTimeout)
 
-local timedOutPartitions = redis.call('ZRANGEBYSCORE',PurgePendingKey,"-inf",timeTillReAcquirePartitions,"LIMIT",0, partitionsToAcquire)
-for index = 1, #timedOutPartitions do
-    local timedOutPartitionName = timedOutPartitions[index]
-    local dataToBePurged = redis.call('ZRANGE',(spaceKey ..  seperator .. timedOutPartitionName .. purgeMarker ),0,-1,'WITHSCORES')
-    redis.call("ZADD",PurgePendingKey,currentTimestampInSeconds,timedOutPartitionName)
-    table.insert(acquiredPartitions,{timedOutPartitionName,dataToBePurged})
+if(reAcquireTimeout > 0) then
+    local timedOutPartitions = redis.call('ZRANGEBYSCORE',PurgePendingKey,"-inf",timeTillReAcquirePartitions,"LIMIT",0, partitionsToAcquire)
+    for index = 1, #timedOutPartitions do
+        local timedOutPartitionName = timedOutPartitions[index]
+        local dataToBePurged = redis.call('ZRANGE',(spaceKey ..  seperator .. timedOutPartitionName .. seperator .. purgeMarker ),0,-1,'WITHSCORES')
+        redis.call("ZADD",PurgePendingKey,currentTimestampInSeconds,timedOutPartitionName)
+        table.insert(acquiredPartitions,{timedOutPartitionName,dataToBePurged})
+    end
 end
 
 if(#acquiredPartitions < partitionsToAcquire and timeThreshold > 0) then

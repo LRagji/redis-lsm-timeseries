@@ -172,6 +172,7 @@ module.exports = class Timeseries {
     }
 
     async purgeAcquire(scriptoServer, timeThreshold, countThreshold, reAcquireTimeout, partitionsToAcquire = 10) {
+
         if (scriptoServer == null) {
             return Promise.reject("Parameter 'scriptoServer' is invalid: Should be an instance of redis-scripto.");
         }
@@ -181,22 +182,28 @@ module.exports = class Timeseries {
         catch (err) {
             return Promise.reject("Parameter 'timeThreshold' is invalid: " + err.message);
         }
+
         try {
             countThreshold = BigInt(countThreshold);
         }
         catch (err) {
             return Promise.reject("Parameter 'countThreshold' is invalid: " + err.message);
         }
+
         try {
             reAcquireTimeout = BigInt(reAcquireTimeout);
-            if (reAcquireTimeout <= 0) {
-                throw new Error("Cannot be less then or equal to zero.");
-            }
         }
         catch (err) {
             return Promise.reject("Parameter 'reAcquireTimeout' is invalid: " + err.message);
         }
 
+        if (partitionsToAcquire <= 0) {
+            throw new Error("Parameter 'partitionsToAcquire' cannot be less then or equal to zero.");
+        }
+
+        if (countThreshold <= 0 && reAcquireTimeout <= 0 && timeThreshold <= 0) {
+            throw new Error("Parameter 'countThreshold' 'reAcquireTimeout' 'timeThreshold' cannot be less then or equal to zero.");
+        }
         scriptoServer.loadFromDir(path.join(__dirname, LUA_SCRIPT_DIR_NAME));
 
         const keys = [
