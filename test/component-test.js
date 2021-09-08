@@ -11,6 +11,7 @@ const tagnameToTagId = hash;
 const settings = {
     "ActivityKey": "Activity",
     "SamplesPerPartitionKey": "Stats",
+    "PurgePendingKey": "Pending",
     "Seperator": "=",
     "MaximumTagsInOneWrite": 2000,
     "MaximumTagsInOneRead": 100,

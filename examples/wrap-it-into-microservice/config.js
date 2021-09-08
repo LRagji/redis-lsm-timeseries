@@ -1,7 +1,7 @@
 const redisType = require("ioredis");
 let shards = [
     "redis://127.0.0.1:6379/",
-    "redis://127.0.0.1:6380/"
+    //"redis://127.0.0.1:6380/"
 ];
 const maximumNumberOfPartitions = 10;
 
@@ -13,6 +13,7 @@ module.exports = {
     "settings": {
         "ActivityKey": "Activity",
         "SamplesPerPartitionKey": "Stats",
+        "PurgePendingKey": "Pending",
         "Seperator": "=",
         "MaximumTagsInOneWrite": 2000,
         "MaximumTagsInOneRead": 100,
