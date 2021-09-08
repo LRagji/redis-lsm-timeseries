@@ -1,5 +1,8 @@
 const redisType = require("ioredis");
-let shards = ["redis://127.0.0.1:6379/", "redis://127.0.0.1:6380/"];
+let shards = [
+    "redis://127.0.0.1:6379/",
+    "redis://127.0.0.1:6380/"
+];
 const maximumNumberOfPartitions = 10;
 
 module.exports = {

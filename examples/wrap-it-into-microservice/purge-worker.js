@@ -9,7 +9,7 @@ const scripto = require('redis-scripto2');
 async function mainSyncLoop(redisConnectionString) {
     const timeout = 60;
     const reTryTimeout = 60 * 10;//10Mins
-    const coolDownTime = 5000;
+    const coolDownTime = 10000;
     const processInOneLoop = 100;
     const store = new timeseriesType(config.tagToPartitionMapping, config.partitionToRedisMapping, config.tagNameToTagId, config.settings);
     const scriptManager = new scripto(new redisType(redisConnectionString));
