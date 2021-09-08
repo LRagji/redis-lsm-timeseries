@@ -111,22 +111,33 @@ app.post('/get', (req, res) => {
         console.log(`${consumerName} listening at http://localhost:${port}`);
     });
 
-    // await new Promise((resolve, reject) => {
-    //     const worker = new Worker(path.join(__dirname, "purge-worker.js"), {
-    //         workerData: {
-    //             "HotHoldTime": HotHoldTime,
-    //             "coolDownTime": 5000,
-    //             "processInOneLoop": 200,
-    //             "redisConnectionString": localRedisConnectionString
-    //         }
-    //     });
-    //     worker.on('message', resolve);
-    //     worker.on('error', reject);
-    //     worker.on('exit', (code) => {
-    //         if (code !== 0)
-    //             reject(new Error(`Worker stopped with exit code ${code}`));
-    //     });
-    // });
+    await new Promise((resolve, reject) => {
+        const worker = new Worker(path.join(__dirname, "purge-worker.js"), {
+            workerData: {
+                "HotHoldTime": HotHoldTime,
+                "coolDownTime": 5000,
+                "processInOneLoop": 200,
+                "redisConnectionString": localRedisConnectionString,
+                "settings": {
+                    "ActivityKey": "Activity",
+                    "SamplesPerPartitionKey": "Stats",
+                    "Seperator": "=",
+                    "MaximumTagsInOneWrite": 2000,
+                    "MaximumTagsInOneRead": 100,
+                    "MaximumTagNameLength": 200,
+                    "MaximumPartitionsScansInOneRead": 100,
+                    "PartitionTimeWidth": 5000,
+                    "PurgeMarker": "P"
+                }
+            }
+        });
+        worker.on('message', resolve);
+        worker.on('error', reject);
+        worker.on('exit', (code) => {
+            if (code !== 0)
+                reject(new Error(`Worker stopped with exit code ${code}`));
+        });
+    });
 
 })()
     .then(consumerName => {

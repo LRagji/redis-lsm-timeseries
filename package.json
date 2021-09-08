@@ -9,13 +9,16 @@
     "test:windows": "npm run redisstart && npm run mocha && npm run redisstop && npm run redisstart && env REDISCLIENT=1 npm run mocha && npm run redisstop",
     "test:nix": "npm run redisstart && npm run mocha && npm run redisstop && npm run redisstart && env REDISCLIENT=1 npm run mocha && npm run redisstop",
     "test": "run-script-os",
+    "perf": "npm run redisstart && concurrently \"npm run service\" \"npm run jmeter\"",
+    "jmeter": "run-script-os",
     "redisstop": "docker stop streamz",
     "redisstart": "npm run redisstop || node -v && docker run --name streamz -p 6379:6379 -itd --rm redis:latest",
     "rediscli": "docker exec -it streamz redis-cli",
-    "jmeter": "docker run --rm --name jmeter -i -v ${PWD}:${PWD} -w ${PWD} justb4/jmeter:latest -n -t ${PWD}/perf/PerfTest.jmx -l ${PWD}/perf/jmeter.jtl -j ${PWD}/perf/jmeter.log -f -e -o ${PWD}/perf/results -JTARGET_HOST=172.17.0.1",
+    "jmeter:windows": "docker run --rm --name jmeter -i -v ${PWD}:${PWD} -w ${PWD} justb4/jmeter:latest -n -t ${PWD}/perf/PerfTest.jmx -l ${PWD}/perf/jmeter.jtl -j ${PWD}/perf/jmeter.log -f -e -o ${PWD}/perf/results -JTARGET_HOST=172.17.0.1",
+    "jmeter:macos": "docker run --rm --name jmeter -i -v ${PWD}:${PWD} -w ${PWD} justb4/jmeter:latest -n -t ${PWD}/perf/PerfTest.jmx -l ${PWD}/perf/jmeter.jtl -j ${PWD}/perf/jmeter.log -f -e -o ${PWD}/perf/results -JTARGET_HOST=192.168.1.101",
+    "jmeter:nix": "docker run --rm --name jmeter -i -v ${PWD}:${PWD} -w ${PWD} justb4/jmeter:latest -n -t ${PWD}/perf/PerfTest.jmx -l ${PWD}/perf/jmeter.jtl -j ${PWD}/perf/jmeter.log -f -e -o ${PWD}/perf/results -JTARGET_HOST=172.17.0.1",
     "service": "node examples/wrap-it-into-microservice/service.js",
     "service-muted": "node examples/wrap-it-into-microservice/service.js Mute",
-    "perf": "npm run redisstart && concurrently \"npm run service\" \"npm run jmeter\"",
     "jmeter-gui": "bash /home/chromeboook/apache-jmeter-5.4.1/bin/jmeter"
   },
   "repository": {
