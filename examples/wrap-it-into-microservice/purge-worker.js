@@ -3,26 +3,23 @@ const redisType = require("ioredis");
 const fs = require('fs').promises;
 const path = require('path');
 const timeseriesType = require("../../timeseries");
+const config = require("./config");
 const scripto = require('redis-scripto2');
-const hash = (tagName) => Array.from(tagName).reduce((acc, c) => acc + c.charCodeAt(0), 0);
-const tagToPartitionMapping = (tagName) => hash(tagName) % 10;
-const tagNameToTagId = hash;
 
-async function mainSyncLoop(config) {
-    const holdTimeInSeconds = config.HotHoldTime / 1000;
-    const coolDownTime = config.coolDownTime;
-    const processInOneLoop = config.processInOneLoop;
-    const localRedisConnectionString = config.redisConnectionString;
-    const redisClient = new redisType(localRedisConnectionString);
-    const store = new timeseriesType(tagToPartitionMapping, (partitionName) => redisClient, tagNameToTagId, config.settings);
-    const scriptManager = new scripto(redisClient);
+async function mainSyncLoop(redisConnectionString) {
+    const timeout = 60;
+    const reTryTimeout = 60 * 10;//10Mins
+    const coolDownTime = 5000;
+    const processInOneLoop = 100;
+    const store = new timeseriesType(config.tagToPartitionMapping, config.partitionToRedisMapping, config.tagNameToTagId, config.settings);
+    const scriptManager = new scripto(new redisType(redisConnectionString));
 
     let shutdown = false;
     while (shutdown === false) {
         const startTime = Date.now();
         try {
             let totalSamples = 0.0;
-            const acquiredPartitions = await store.purgeAcquire(scriptManager, -1, 10000, (holdTimeInSeconds * 3), processInOneLoop);
+            const acquiredPartitions = await store.purgeAcquire(scriptManager, timeout, 10000, reTryTimeout, processInOneLoop);
             for (let index = 0; index < acquiredPartitions.length; index++) {
                 const partitionInfo = acquiredPartitions[index];
                 let fileData = "";
