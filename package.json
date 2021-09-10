@@ -16,7 +16,7 @@
     "jmeter:nix": "docker run --rm --name jmeter -i -v ${PWD}:${PWD} -w ${PWD} justb4/jmeter:latest -n -t ${PWD}/perf/PerfTest.jmx -l ${PWD}/perf/jmeter.jtl -j ${PWD}/perf/jmeter.log -f -e -o ${PWD}/perf/results -JTARGET_HOST=172.17.0.1",
     "service": "node examples/wrap-it-into-microservice/service.js",
     "service-muted": "node examples/wrap-it-into-microservice/service.js Mute",
-    "jmeter-gui": "bash /home/chromeboook/apache-jmeter-5.4.1/bin/jmeter"
+    "jmeter-gui": "docker run -itd --rm -v C:/Users/Lauki/Documents/Git/redis-lsm-timeseries/:/root/jmeter/ -p 5900:5900 -p 3390:3389 guitarrapc/jmeter-gui:latest"
   },
   "repository": {
     "type": "git",
