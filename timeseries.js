@@ -108,9 +108,24 @@ module.exports = class Timeseries {
                 const redisClient = this._partitionRedisConnectionResolver(partitionName);
                 const scoredSamples = Array.from(samples, kvp => kvp.reverse()).flatMap(kvp => kvp);
                 const serverTime = await redisClient.time();
-                await redisClient.zadd(this._assembleRedisKey(partitionName), ...scoredSamples);//Main partition
-                await redisClient.zadd(this._assembleRedisKey(this._settings.ActivityKey), serverTime[0], partitionName);//Activity for partition
-                await redisClient.zincrby(this._assembleRedisKey(this._settings.SamplesPerPartitionKey), (scoredSamples.length / 2), partitionName);//Sample count for partition
+                return await new Promise((acc, rej) => {
+                    redisClient.multi()
+                        .zadd(this._assembleRedisKey(partitionName), ...scoredSamples)//Main partition
+                        .zadd(this._assembleRedisKey(this._settings.ActivityKey), serverTime[0], partitionName)//Activity for partition
+                        .zincrby(this._assembleRedisKey(this._settings.SamplesPerPartitionKey), (scoredSamples.length / 2), partitionName)//Sample count for partition
+                        .exec((multiExecError, results) => {
+                            if (multiExecError) {
+                                rej(multiExecError);
+                                return;
+                            }
+                            if (results === null) {
+                                rej(new Error("Transaction aborted because results were null"));
+                                return;
+                            } else {
+                                acc(results);
+                            }
+                        });
+                });
             })());
         });
 

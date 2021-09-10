@@ -9,11 +9,6 @@ module.exports = (redisConnectionString) => {
             redisClient = myFavClient;
             redisClient.xreadgroup = promisify(myFavClient.xreadgroup).bind(myFavClient);
             redisClient.xack = promisify(myFavClient.xack).bind(myFavClient);
-            redisClient.multi = () => {
-                let multiObject = myFavClient.multi();
-                multiObject.exec = promisify(multiObject.exec);
-                return multiObject;
-            };
             redisClient.xdel = promisify(myFavClient.xdel).bind(myFavClient);
             redisClient.xpending = promisify(myFavClient.xpending).bind(myFavClient);
             redisClient.xgroup = promisify(myFavClient.xgroup).bind(myFavClient);
