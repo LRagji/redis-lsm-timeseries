@@ -1,4 +1,5 @@
 const redisType = require("ioredis");
+const tags = new Map();
 let shards = [
     "redis://127.0.0.1:6379/",
     //"redis://127.0.0.1:6380/"
@@ -25,7 +26,15 @@ module.exports = {
 }
 
 function hash(tagName) {
-    return Array.from(tagName).reduce((acc, c) => acc + c.charCodeAt(0), 0);
+    const existingId = tags.get(tagName);
+    if (existingId == null) {
+        tags.set(tagName, (tags.size + 1));
+        return tags.get(tagName);
+    }
+    else {
+        return existingId;
+    }
+    //return Array.from(tagName).reduce((acc, c) => acc + c.charCodeAt(0), 0);
 }
 
 function redisShard(partitionName) {

@@ -121,10 +121,10 @@ vars.put(&quot;rb&quot;,JsonOutput.toJson(requestBody));</stringProp>
             <stringProp name="script">import groovy.json.JsonOutput
 
 Thread thread = Thread.currentThread();
-Date latestdate = new Date(); 
+BigInteger latestdate = new BigInteger(vars.get(&quot;Time&quot;)); 
 def range = new HashMap&lt;String,Long&gt;();
-range.put(&quot;start&quot;, latestdate.getTime()-10); 
-range.put(&quot;end&quot;, latestdate.getTime()+10); 
+range.put(&quot;start&quot;, latestdate-120000); 
+range.put(&quot;end&quot;, latestdate+120000); 
 
 
 def requestBody= new HashMap&lt;String,HashMap&lt;String,Long&gt;&gt;();
