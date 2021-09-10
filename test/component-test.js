@@ -58,6 +58,35 @@ describe('Timeseries consumer tests', function () {
         assert.deepStrictEqual(readResults, inputData);
     });
 
+    it('Should read only updated data', async function () {
+
+        //SETUP
+        target = new timeseriesType(tagToPartitionMapping, partitionToRedisMapping, tagnameToTagId, settings);
+        const inputData = new Map();
+        inputData.set("GapTag", new Map([[1n, "One"], [2n, "Two"], [10n, "Ten"], [20n, "Twenty"]]));
+        inputData.set("SerialTag", new Map([[1n, "One"], [2n, "Two"], [3n, "Three"], [4n, "Four"]]));
+        const updatedData = new Map();
+        updatedData.set("GapTag", new Map([[1n, "OneU"], [2n, "TwoU"], [10n, "TenU"], [20n, "TwentyU"]]));
+        updatedData.set("SerialTag", new Map([[1n, "OneU2"], [2n, "TwoU2"], [3n, "ThreeU2"], [4n, "FourU2"]]));
+        const ranges = new Map();
+        ranges.set("GapTag", { "start": 0, "end": 100 });
+        ranges.set("SerialTag", { "start": 0, "end": 100 });
+
+        //Write
+        const writeResult = await target.write(inputData);
+
+        //Update
+        const updateResult = await target.write(updatedData);
+
+        //Read
+        const readResults = await target.read(ranges)
+
+        //VERIFY
+        assert.strictEqual(writeResult, true);
+        assert.strictEqual(updateResult, true);
+        assert.deepStrictEqual(readResults, updatedData);
+    });
+
     it('Should purge on count and release data sucessfully.', async function () {
 
         //SETUP
