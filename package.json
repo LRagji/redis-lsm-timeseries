@@ -6,7 +6,7 @@
   "scripts": {
     "mocha": " nyc --reporter=html --reporter=text mocha",
     "test": "npm run redisstart && npm run mocha",
-    "perf": "npm run redisstart && concurrently \"npm run service\" \"npm run jmeter\"",
+    "perf": "npm run redisstart && concurrently \"npm run service-file\" \"npm run jmeter\"",
     "jmeter": "run-script-os",
     "redisstop": "docker stop streamz",
     "redisstart": "(npm run redisstop || node -v )&& docker run --name streamz -p 6379:6379 -itd --rm redis:latest",
@@ -14,8 +14,9 @@
     "jmeter:windows": "docker run --rm --name jmeter -i -v C:/Users/Lauki/Documents/Git/redis-lsm-timeseries:/app -w /app justb4/jmeter:latest -n -t /app/perf/PerfTest.jmx -l /app/perf/jmeter.jtl -j /app/perf/jmeter.log -f -e -o /app/perf/results -JTARGET_HOST=192.168.1.101",
     "jmeter:macos": "docker run --rm --name jmeter -i -v ${PWD}:${PWD} -w ${PWD} justb4/jmeter:latest -n -t ${PWD}/perf/PerfTest.jmx -l ${PWD}/perf/jmeter.jtl -j ${PWD}/perf/jmeter.log -f -e -o ${PWD}/perf/results -JTARGET_HOST=192.168.1.23",
     "jmeter:nix": "docker run --rm --name jmeter -i -v ${PWD}:${PWD} -w ${PWD} justb4/jmeter:latest -n -t ${PWD}/perf/PerfTest.jmx -l ${PWD}/perf/jmeter.jtl -j ${PWD}/perf/jmeter.log -f -e -o ${PWD}/perf/results -JTARGET_HOST=172.17.0.1",
-    "service": "npm run redisstart && node examples/wrap-it-into-microservice/service.js Purge",
-    "service-muted": "node examples/wrap-it-into-microservice/service.js",
+    "service-pg": "npm run redisstart && node examples/wrap-it-into-microservice/service.js PG",
+    "service-file": "npm run redisstart && node examples/wrap-it-into-microservice/service.js FILE",
+    "service": "node examples/wrap-it-into-microservice/service.js",
     "jmeter-gui": "run-script-os",
     "jmeter-gui:macos": "docker run -itd --rm -v ${PWD}:/root/jmeter/ -p 5900:5900 -p 3390:3389 guitarrapc/jmeter-gui:latest",
     "jmeter-gui:windows": "docker run -itd --rm -v C:/Users/Lauki/Documents/Git/redis-lsm-timeseries/:/root/jmeter/ -p 5900:5900 -p 3390:3389 guitarrapc/jmeter-gui:latest"
@@ -49,6 +50,7 @@
     "ioredis": "^4.27.6",
     "mocha": "^9.0.2",
     "nyc": "^15.1.0",
+    "pg-promise": "^10.11.0",
     "redis": "^3.1.2",
     "redis-streams-broker": "0.0.12",
     "run-script-os": "^1.1.6"

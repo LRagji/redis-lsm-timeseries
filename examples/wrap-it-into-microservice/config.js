@@ -1,13 +1,14 @@
 const redisType = require("ioredis");
 const tags = new Map();
-let shards = [
-    "redis://127.0.0.1:6379/",
+let stores = [
+    { "hot": "redis://127.0.0.1:6379/", "cold": "/raw-db/" },
+    //{ "hot": "redis://127.0.0.1:6379/", "cold": "postgres://postgres:@localhost:5432/Data" },
     //"redis://127.0.0.1:6380/"
 ];
 const maximumNumberOfPartitions = 10;
 
 module.exports = {
-    "shards": shards,
+    "stores": stores,
     "tagNameToTagId": hash,
     "tagToPartitionMapping": tagGrouping,
     "partitionToRedisMapping": redisShard,
@@ -39,12 +40,12 @@ function hash(tagName) {
 
 function redisShard(partitionName) {
     const index = hash(partitionName) % shards.length;
-    return shards[index].client;
+    return shards[index].hot;
 }
 
 function tagGrouping(tagName) {
     return hash(tagName) % maximumNumberOfPartitions;
 }
 
-shards = shards.map(connectionString => ({ "client": new redisType(connectionString) }));
+const shards = stores.map(storeInfo => ({ "hot": new redisType(storeInfo.hot), "cold": storeInfo.cold }));
 

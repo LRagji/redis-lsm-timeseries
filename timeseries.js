@@ -238,6 +238,7 @@ module.exports = class Timeseries {
             const partitionInfo = this._extractPartitionInfo(serializedData[0]);
             acquiredPartitionInfo.releaseToken = serializedData[0];
             acquiredPartitionInfo.name = partitionInfo.partition;
+            acquiredPartitionInfo.start = partitionInfo.start;
             acquiredPartitionInfo.data = new Map();
             this._parsePartitionData(serializedData[1], partitionInfo.start, tagId => acquiredPartitionInfo.data.get(tagId) || new Map(), acquiredPartitionInfo.data.set.bind(acquiredPartitionInfo.data));
             acquiredPartitionInfo.data.forEach((timeMap, tagName) => {

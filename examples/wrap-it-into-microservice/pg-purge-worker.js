@@ -5,6 +5,11 @@ const path = require('path');
 const timeseriesType = require("../../timeseries");
 const config = require("./config");
 const scripto = require('redis-scripto2');
+const pgp = require('pg-promise')({
+    /* initialization options */
+    capSQL: true // capitalize all generated SQL
+});
+
 
 async function mainPurgeLoop(storeInfo) {
     const timeout = 60;
@@ -13,12 +18,15 @@ async function mainPurgeLoop(storeInfo) {
     const processInOneLoop = 100;
     const store = new timeseriesType(config.tagToPartitionMapping, config.partitionToRedisMapping, config.tagNameToTagId, config.settings);
     const scriptManager = new scripto(new redisType(storeInfo.hot));
+    const db = pgp(storeInfo.cold);
+    const columnDef = new pgp.helpers.ColumnSet(['id', 'start', 'blob'], { table: 'raw' });
 
     let shutdown = false;
     while (shutdown === false) {
         const startTime = Date.now();
         try {
             let totalSamples = 0.0;
+            const data = [];
             const acquiredPartitions = await store.purgeAcquire(scriptManager, timeout, (2000 * 60), reTryTimeout, processInOneLoop);
             for (let index = 0; index < acquiredPartitions.length; index++) {
                 const partitionInfo = acquiredPartitions[index];
@@ -29,7 +37,9 @@ async function mainPurgeLoop(storeInfo) {
                         totalSamples++;
                     })
                 });
-                await fs.appendFile(path.join(__dirname, storeInfo.cold, partitionInfo.releaseToken + ".txt"), fileData);
+                //await fs.appendFile(path.join(__dirname, "/raw-db/", partitionInfo.releaseToken + ".txt"), fileData);
+                data.push({ "id": BigInt(partitionInfo.name), "start": partitionInfo.start, "blob": Buffer.from(fileData) });
+                await db.none(pgp.helpers.insert(data, columnDef));
                 const result = await store.purgeRelease(scriptManager, partitionInfo.releaseToken);
                 if (result !== true) {
                     throw new Error(`Ack failed! ${partitionInfo.releaseToken}.`);

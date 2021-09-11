@@ -59,11 +59,14 @@ app.post('/get', (req, res) => {
     app.listen(port, () => {
         console.log(`${consumerName} listening at http://localhost:${port}`);
     });
-    if (process.argv[2] === "Purge") {
-        const purgeWorkers = config.shards.map(connectionString =>
+    let workerName = null;
+    if (process.argv[2] === "PG") workerName = "pg-purge-worker.js";
+    if (process.argv[2] === "FILE") workerName = "file-purge-worker.js";
+    if (workerName != null) {
+        const purgeWorkers = config.stores.map(storeInfo =>
             new Promise((resolve, reject) => {
-                const worker = new Worker(path.join(__dirname, "file-purge-worker.js"), {
-                    workerData: connectionString
+                const worker = new Worker(path.join(__dirname, workerName), {
+                    workerData: storeInfo
                 });
                 worker.on('message', resolve);
                 worker.on('error', reject);
