@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.4.1">
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.3">
   <hashTree>
     <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Test Plan" enabled="true">
       <stringProp name="TestPlan.comments"></stringProp>
@@ -123,8 +123,8 @@ vars.put(&quot;rb&quot;,JsonOutput.toJson(requestBody));</stringProp>
 Thread thread = Thread.currentThread();
 BigInteger latestdate = new BigInteger(vars.get(&quot;Time&quot;)); 
 def range = new HashMap&lt;String,Long&gt;();
-range.put(&quot;start&quot;, latestdate-120000); 
-range.put(&quot;end&quot;, latestdate+120000); 
+range.put(&quot;start&quot;, latestdate-2990000); 
+range.put(&quot;end&quot;, latestdate+1990000); 
 
 
 def requestBody= new HashMap&lt;String,HashMap&lt;String,Long&gt;&gt;();
