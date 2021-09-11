@@ -108,24 +108,11 @@ module.exports = class Timeseries {
                 const redisClient = this._partitionRedisConnectionResolver(partitionName);
                 const scoredSamples = Array.from(samples, kvp => kvp.reverse()).flatMap(kvp => kvp);
                 const serverTime = await redisClient.time();
-                return await new Promise((acc, rej) => {
-                    redisClient.multi()
-                        .zadd(this._assembleRedisKey(partitionName), ...scoredSamples)//Main partition
-                        .zadd(this._assembleRedisKey(this._settings.ActivityKey), serverTime[0], partitionName)//Activity for partition
-                        .zincrby(this._assembleRedisKey(this._settings.SamplesPerPartitionKey), (scoredSamples.length / 2), partitionName)//Sample count for partition
-                        .exec((multiExecError, results) => {
-                            if (multiExecError) {
-                                rej(multiExecError);
-                                return;
-                            }
-                            if (results === null) {
-                                rej(new Error("Transaction aborted because results were null"));
-                                return;
-                            } else {
-                                acc(results);
-                            }
-                        });
-                });
+                return await redisClient.pipeline()
+                    .zadd(this._assembleRedisKey(partitionName), ...scoredSamples)//Main partition
+                    .zadd(this._assembleRedisKey(this._settings.ActivityKey), serverTime[0], partitionName)//Activity for partition
+                    .zincrby(this._assembleRedisKey(this._settings.SamplesPerPartitionKey), (scoredSamples.length / 2), partitionName)//Sample count for partition
+                    .exec();
             })());
         });
 
@@ -151,9 +138,11 @@ module.exports = class Timeseries {
             const redisClient = this._partitionRedisConnectionResolver(partitionName);
             const purgedPartitionName = `${partitionName}${this._settings.Seperator}${this._settings.PurgeMarker}`;
             asyncCommands = asyncCommands.concat(ranges.map(async range => {
-                const purgingDataResponse = await redisClient.zrangebyscore(this._assembleRedisKey(purgedPartitionName), range.start, range.end, WITHSCORES);//Purging partition Query
-                const activeDataResponse = await redisClient.zrangebyscore(this._assembleRedisKey(partitionName), range.start, range.end, WITHSCORES);//Active partition Query
-                range.response = purgingDataResponse.concat(activeDataResponse);//Sequence matters cause of time sorted keys.
+                const multiResponse = await redisClient.pipeline()
+                    .zrangebyscore(this._assembleRedisKey(purgedPartitionName), range.start, range.end, WITHSCORES) //Purging partition Query
+                    .zrangebyscore(this._assembleRedisKey(partitionName), range.start, range.end, WITHSCORES) //Active partition Query
+                    .exec();
+                range.response = multiResponse.reduce((accum, e) => accum[1].concat(e[1]));//Sequence matters cause of time sorted keys.
                 return range;
             }));
         });

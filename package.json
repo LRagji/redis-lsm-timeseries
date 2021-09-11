@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "mocha": " nyc --reporter=html --reporter=text mocha",
-    "test": "npm run redisstart && npm run mocha && npm run redisstop && npm run redisstart && cross-env REDISCLIENT=1 npm run mocha && npm run redisstop",
+    "test": "npm run redisstart && npm run mocha",
     "perf": "npm run redisstart && concurrently \"npm run service\" \"npm run jmeter\"",
     "jmeter": "run-script-os",
     "redisstop": "docker stop streamz",

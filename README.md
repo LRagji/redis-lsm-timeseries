@@ -20,7 +20,9 @@ This project is inspired from LSM data structure implemented on Redis for Timese
 ## Current Version:
 W.I.P(Not released yet)
 
-
+## Assumption
+1. Only support for [ioredis](https://www.npmjs.com/package/ioredis) client.
+2. Shards have their time synced with system time where package is running.
 ## License
 This project is contrubution to public domain and completely free for use, view [LICENSE.md](/license.md) file for details.
 
