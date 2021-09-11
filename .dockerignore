@@ -1,0 +1,5 @@
+# ignore .git and .cache folders
+.git
+.cache
+examples/wrap-it-into-microservice/node_modules
+examples/wrap-it-into-microservice/raw-db
