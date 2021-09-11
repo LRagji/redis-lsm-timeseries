@@ -6,10 +6,10 @@ const timeseriesType = require("../../timeseries");
 const config = require("./config");
 const scripto = require('redis-scripto2');
 
-async function mainSyncLoop(redisConnectionString) {
+async function mainPurgeLoop(redisConnectionString) {
     const timeout = 60;
     const reTryTimeout = 60 * 10;//10Mins
-    const coolDownTime = 1000;
+    const coolDownTime = 2000;
     const processInOneLoop = 100;
     const store = new timeseriesType(config.tagToPartitionMapping, config.partitionToRedisMapping, config.tagNameToTagId, config.settings);
     const scriptManager = new scripto(new redisType(redisConnectionString));
@@ -19,7 +19,7 @@ async function mainSyncLoop(redisConnectionString) {
         const startTime = Date.now();
         try {
             let totalSamples = 0.0;
-            const acquiredPartitions = await store.purgeAcquire(scriptManager, timeout, 10000, reTryTimeout, processInOneLoop);
+            const acquiredPartitions = await store.purgeAcquire(scriptManager, timeout, (2000 * 60), reTryTimeout, processInOneLoop);
             for (let index = 0; index < acquiredPartitions.length; index++) {
                 const partitionInfo = acquiredPartitions[index];
                 let fileData = "";
@@ -48,5 +48,5 @@ async function mainSyncLoop(redisConnectionString) {
     }
 }
 
-mainSyncLoop(workerData)
+mainPurgeLoop(workerData)
     .then(parentPort.postMessage);

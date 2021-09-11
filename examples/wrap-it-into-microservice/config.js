@@ -20,7 +20,7 @@ module.exports = {
         "MaximumTagsInOneRead": 100,
         "MaximumTagNameLength": 200,
         "MaximumPartitionsScansInOneRead": 100,
-        "PartitionTimeWidth": 5000,
+        "PartitionTimeWidth": 60000,
         "PurgeMarker": "P"
     }
 }

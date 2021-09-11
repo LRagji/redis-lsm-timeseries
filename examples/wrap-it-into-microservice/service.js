@@ -46,8 +46,11 @@ app.post('/get', (req, res) => {
         ranges.set(tagName, range);
     });
     store.read(ranges)
-        .then(result => res.json(result))
-        .catch(error => res.status(500).json(JSON.stringify(error)));
+        .then(result => {
+            result.forEach((timeMap, tag) => result.set(tag, Object.fromEntries(timeMap)));
+            res.json(Object.fromEntries(result));
+        })
+        .catch(error => { console.log(error); res.status(500).json(JSON.stringify(error)); });
 });
 
 //Startup
@@ -56,19 +59,21 @@ app.post('/get', (req, res) => {
     app.listen(port, () => {
         console.log(`${consumerName} listening at http://localhost:${port}`);
     });
-    const threads = config.shards.map(connectionString =>
-        new Promise((resolve, reject) => {
-            const worker = new Worker(path.join(__dirname, "purge-worker.js"), {
-                workerData: connectionString
-            });
-            worker.on('message', resolve);
-            worker.on('error', reject);
-            worker.on('exit', (code) => {
-                if (code !== 0)
-                    reject(new Error(`Worker stopped with exit code ${code}`));
-            });
-        }));
-    return await Promise.allSettled(threads);
+    if (process.argv[2] === "Purge") {
+        const purgeWorkers = config.shards.map(connectionString =>
+            new Promise((resolve, reject) => {
+                const worker = new Worker(path.join(__dirname, "file-purge-worker.js"), {
+                    workerData: connectionString
+                });
+                worker.on('message', resolve);
+                worker.on('error', reject);
+                worker.on('exit', (code) => {
+                    if (code !== 0)
+                        reject(new Error(`Worker stopped with exit code ${code}`));
+                });
+            }));
+        return await Promise.allSettled(purgeWorkers);
+    }
 })()
     .then(threadExitData => {
         console.log(threadExitData);
