@@ -193,6 +193,15 @@ vars.put(&quot;rb&quot;,JsonOutput.toJson(requestBody));</stringProp>
         <stringProp name="filename"></stringProp>
       </ResultCollector>
       <hashTree/>
+      <ResultSaver guiclass="ResultSaverGui" testclass="ResultSaver" testname="Save Responses to a file" enabled="true">
+        <stringProp name="FileSaver.filename">ErrorLaukik</stringProp>
+        <boolProp name="FileSaver.errorsonly">true</boolProp>
+        <boolProp name="FileSaver.successonly">false</boolProp>
+        <boolProp name="FileSaver.skipsuffix">false</boolProp>
+        <boolProp name="FileSaver.skipautonumber">false</boolProp>
+        <boolProp name="FileSaver.addTimstamp">true</boolProp>
+      </ResultSaver>
+      <hashTree/>
       <ResultCollector guiclass="ViewResultsFullVisualizer" testclass="ResultCollector" testname="View Results Tree" enabled="true">
         <boolProp name="ResultCollector.error_logging">false</boolProp>
         <objProp>
@@ -201,7 +210,7 @@ vars.put(&quot;rb&quot;,JsonOutput.toJson(requestBody));</stringProp>
             <time>true</time>
             <latency>true</latency>
             <timestamp>true</timestamp>
-            <success>true</success>
+            <success>false</success>
             <label>true</label>
             <code>true</code>
             <message>true</message>
@@ -212,7 +221,7 @@ vars.put(&quot;rb&quot;,JsonOutput.toJson(requestBody));</stringProp>
             <subresults>true</subresults>
             <responseData>false</responseData>
             <samplerData>false</samplerData>
-            <xml>false</xml>
+            <xml>true</xml>
             <fieldNames>true</fieldNames>
             <responseHeaders>false</responseHeaders>
             <requestHeaders>false</requestHeaders>

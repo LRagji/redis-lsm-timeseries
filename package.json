@@ -21,7 +21,8 @@
     "jmeter-gui:macos": "docker run -itd --rm -v ${PWD}:/root/jmeter/ -p 5900:5900 -p 3390:3389 guitarrapc/jmeter-gui:latest",
     "jmeter-gui:windows": "docker run -itd --rm -v C:/Users/Lauki/Documents/Git/redis-lsm-timeseries/:/root/jmeter/ -p 5900:5900 -p 3390:3389 guitarrapc/jmeter-gui:latest",
     "docker-build": "docker build . -t lragji/ts-v2.0",
-    "docker-run": "docker run --rm --name jmeter -i -v ${PWD}:${/usr/src/app/examples/wrap-it-into-microservice/external} lragji/ts-v2.0"
+    "docker-run": "docker run --rm --name Timeseries -i -p 3000:3000 -v ${PWD}/docker-config:/usr/src/app/examples/wrap-it-into-microservice/external lragji/ts-v2.0 FILE",
+    "docker-perf": "concurrently \"npm run docker-run\" \"npm run jmeter\""
   },
   "repository": {
     "type": "git",

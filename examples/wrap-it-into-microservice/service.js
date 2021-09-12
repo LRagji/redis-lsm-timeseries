@@ -63,6 +63,7 @@ app.post('/get', (req, res) => {
     if (process.argv[2] === "PG") workerName = "pg-purge-worker.js";
     if (process.argv[2] === "FILE") workerName = "file-purge-worker.js";
     if (workerName != null) {
+        console.log(`Running in ${workerName} purge mode.`);
         const purgeWorkers = config.stores.map(storeInfo =>
             new Promise((resolve, reject) => {
                 const worker = new Worker(path.join(__dirname, workerName), {
@@ -76,6 +77,9 @@ app.post('/get', (req, res) => {
                 });
             }));
         return await Promise.allSettled(purgeWorkers);
+    }
+    else {
+        console.log("Running in standalone mode, No data purge strategy specified.");
     }
 })()
     .then(threadExitData => {
