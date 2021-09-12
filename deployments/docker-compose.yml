@@ -1,7 +1,0 @@
-version: '3.8'
-services:
-  timeseries:
-    image: "lragji/ts-v2.0"
-    args: 
-    ports:
-      - "80:3000"
