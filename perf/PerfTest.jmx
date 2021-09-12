@@ -13,7 +13,7 @@
     </TestPlan>
     <hashTree>
       <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Device 200Tags 10Samples each 60 RPM" enabled="true">
-        <stringProp name="ThreadGroup.on_sample_error">stoptest</stringProp>
+        <stringProp name="ThreadGroup.on_sample_error">stopthread</stringProp>
         <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
           <boolProp name="LoopController.continue_forever">false</boolProp>
           <stringProp name="LoopController.loops">100</stringProp>
@@ -48,7 +48,7 @@
             </collectionProp>
           </elementProp>
           <stringProp name="HTTPSampler.domain">${__P(TARGET_HOST,localhost)}</stringProp>
-          <stringProp name="HTTPSampler.port">3000</stringProp>
+          <stringProp name="HTTPSampler.port">${__P(TARGET_PORT,80)}</stringProp>
           <stringProp name="HTTPSampler.protocol">http</stringProp>
           <stringProp name="HTTPSampler.contentEncoding"></stringProp>
           <stringProp name="HTTPSampler.path">/set</stringProp>
@@ -99,7 +99,7 @@ vars.put(&quot;rb&quot;,JsonOutput.toJson(requestBody));</stringProp>
             </collectionProp>
           </elementProp>
           <stringProp name="HTTPSampler.domain">${__P(TARGET_HOST,localhost)}</stringProp>
-          <stringProp name="HTTPSampler.port">3000</stringProp>
+          <stringProp name="HTTPSampler.port">${__P(TARGET_PORT,80)}</stringProp>
           <stringProp name="HTTPSampler.protocol">http</stringProp>
           <stringProp name="HTTPSampler.contentEncoding"></stringProp>
           <stringProp name="HTTPSampler.path">/get</stringProp>
