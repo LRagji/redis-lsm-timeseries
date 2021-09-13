@@ -54,34 +54,30 @@ app.post('/get', (req, res) => {
 });
 
 //Startup
-(async () => {
-    const consumerName = `C-${store.instanceHash}`;
-    app.listen(port, () => {
-        console.log(`${consumerName} listening at http://localhost:${port}`);
-    });
-    let workerName = null;
-    if (process.argv[2] === "PG") workerName = "pg-purge-worker.js";
-    if (process.argv[2] === "FILE") workerName = "file-purge-worker.js";
-    if (workerName != null) {
-        console.log(`Running in ${workerName} purge mode.`);
-        const purgeWorkers = config.stores.map(storeInfo =>
-            new Promise((resolve, reject) => {
-                const worker = new Worker(path.join(__dirname, workerName), {
-                    workerData: storeInfo
-                });
-                worker.on('message', resolve);
-                worker.on('error', reject);
-                worker.on('exit', (code) => {
-                    if (code !== 0)
-                        reject(new Error(`Worker stopped with exit code ${code}`));
-                });
-            }));
-        return await Promise.allSettled(purgeWorkers);
-    }
-    else {
-        console.log("Running in standalone mode, No data purge strategy specified.");
-    }
-})()
-    .then(threadExitData => {
-        console.log(threadExitData);
-    });
+const consumerName = `C-${store.instanceHash}`;
+let workerName = null;
+if (config.mode === "PG") workerName = "pg-purge-worker.js";
+if (config.mode === "FILE") workerName = "file-purge-worker.js";
+if (workerName != null) {
+    console.log(`Running in ${workerName} purge mode.`);
+    const purgeWorkers = config.stores.map(storeInfo =>
+        new Promise((resolve, reject) => {
+            const worker = new Worker(path.join(__dirname, workerName), {
+                workerData: storeInfo
+            });
+            worker.on('message', resolve);
+            worker.on('error', reject);
+            worker.on('exit', (code) => {
+                if (code !== 0)
+                    reject(new Error(`Worker stopped with exit code ${code}`));
+            });
+        }));
+    Promise.allSettled(purgeWorkers)
+        .then(r => console.log(`${consumerName} workers exited.`));
+}
+else {
+    console.log("Running in standalone mode, No data purge strategy specified.");
+}
+app.listen(port, () => {
+    console.log(`${consumerName} listening at http://localhost:${port}`);
+});
