@@ -1,7 +1,7 @@
 const redisType = require("ioredis");
 const tags = new Map();
 let stores = [
-    { "hot": "redis://shard1:6379/", "cold": "/raw-db/" },
+    { "hot": "redis://hot-shard1:6379/", "cold": "/raw-db/" },
     //{ "hot": "redis://127.0.0.1:6379/", "cold": "postgres://postgres:@localhost:5432/Data" },
     //"redis://127.0.0.1:6380/"
 ];

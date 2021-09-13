@@ -1,0 +1,49 @@
+version: '3.8'
+services:
+  hot-shard1:
+    image: "redis:latest"
+    container_name: hot-shard1
+    ports:
+      - "6380:6379"
+  timeseries:
+    image: "lragji/ts-v2.0"
+    container_name: timeseries
+    depends_on: 
+      - "hot-shard1"
+    entrypoint: 
+      - "node"
+      - "service.js"
+      - "FILE"
+    ports:
+      - "80:3000"
+    volumes:
+      - ./:/usr/src/app/examples/wrap-it-into-microservice/external/
+      - ./raw-db/:/usr/src/app/examples/wrap-it-into-microservice/raw-db/
+  jmeter:
+    image: "justb4/jmeter:latest"
+    container_name: jmeter
+    depends_on: 
+      - "timeseries"
+    volumes:
+      - ./../../perf/:/app
+    working_dir: /app
+    entrypoint:
+      - "/entrypoint.sh" 
+      - "-n" 
+      - "-t /app/PerfTest.jmx"
+      - "-l /app/jmeter.jtl"
+      - "-j /app/jmeter.log"
+      - "-f" 
+      - "-e" 
+      - "-o /app/results"
+      - "-JTARGET_HOST=timeseries"
+      - "-JTARGET_PORT=3000"
+  # cold-shard1:
+  #   image: postgres:11.4
+  #   restart: always
+  #   environment:
+  #     - POSTGRES_USER=userxyz
+  #     - POSTGRES_PASSWORD=password123
+  #     - POSTGRES_DB=mydb1
+  #   ports:
+  #     - "5434:5432"
