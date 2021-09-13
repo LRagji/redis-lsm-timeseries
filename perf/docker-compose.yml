@@ -5,19 +5,24 @@ services:
     container_name: hot-shard1
     ports:
       - "6380:6379"
+  hot-shard2:
+    image: "redis:latest"
+    container_name: hot-shard2
+    ports:
+      - "6381:6379"
   timeseries:
     image: "lragji/ts-v2.0"
     container_name: timeseries
+    environment:
+      - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/
+      - cold=/raw-db/ /raw-db/
+      - mode=FILE
     depends_on: 
       - "hot-shard1"
-    entrypoint: 
-      - "node"
-      - "service.js"
-      - "FILE"
+      - "hot-shard2"
     ports:
       - "80:3000"
     volumes:
-      - ./:/usr/src/app/examples/wrap-it-into-microservice/external/
       - ./raw-db/:/usr/src/app/examples/wrap-it-into-microservice/raw-db/
   jmeter:
     image: "justb4/jmeter:latest"
@@ -25,7 +30,7 @@ services:
     depends_on: 
       - "timeseries"
     volumes:
-      - ./../../perf/:/app
+      - ./:/app
     working_dir: /app
     entrypoint:
       - "/entrypoint.sh" 
