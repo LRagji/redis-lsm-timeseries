@@ -3,7 +3,7 @@ const redisType = require("ioredis");
 const fs = require('fs').promises;
 const path = require('path');
 const timeseriesType = require("../../timeseries");
-const config = require("./external/config");
+const config = require("./config");
 const scripto = require('redis-scripto2');
 
 async function mainPurgeLoop(storeInfo) {

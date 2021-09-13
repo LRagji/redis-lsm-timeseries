@@ -6,7 +6,7 @@
   "scripts": {
     "mocha": " nyc --reporter=html --reporter=text mocha",
     "test": "npm run redisstart && npm run mocha",
-    "perf": "cd docker-config/perf && docker-compose up --abort-on-container-exit --exit-code-from jmeter && docker-compose rm -f",
+    "perf": "docker-compose -f docker-config/perf/docker-compose.yml up --abort-on-container-exit --exit-code-from jmeter && docker-compose -f docker-config/perf/docker-compose.yml rm -f",
     "jmeter": "run-script-os",
     "redisstop": "docker stop streamz",
     "redisstart": "(npm run redisstop || node -v )&& docker run --name streamz -p 6379:6379 -itd --rm redis:latest",
@@ -16,7 +16,7 @@
     "jmeter:nix": "docker run --rm --name jmeter -i -v ${PWD}:${PWD} -w ${PWD} justb4/jmeter:latest -n -t ${PWD}/perf/PerfTest.jmx -l ${PWD}/perf/jmeter.jtl -j ${PWD}/perf/jmeter.log -f -e -o ${PWD}/perf/results -JTARGET_HOST=172.17.0.1",
     "service-pg": "npm run redisstart && node examples/wrap-it-into-microservice/service.js PG",
     "service-file": "npm run redisstart && node examples/wrap-it-into-microservice/service.js FILE",
-    "service": "node examples/wrap-it-into-microservice/service.js",
+    "service": "cross-env MODE=FILE HOT=\"redis://127.0.0.1:6380/ redis://127.0.0.1:6381/\" COLD=\"/raw-db/ /raw-db/\" node examples/wrap-it-into-microservice/service.js",
     "jmeter-gui": "run-script-os",
     "jmeter-gui:macos": "docker run -itd --rm -v ${PWD}:/root/jmeter/ -p 5900:5900 -p 3390:3389 guitarrapc/jmeter-gui:latest",
     "jmeter-gui:windows": "docker run -itd --rm -v C:/Users/Lauki/Documents/Git/redis-lsm-timeseries/:/root/jmeter/ -p 5900:5900 -p 3390:3389 guitarrapc/jmeter-gui:latest",
