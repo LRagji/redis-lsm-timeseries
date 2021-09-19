@@ -18,15 +18,16 @@ async function mainPurgeLoop(storeInfo) {
     let pullcounter = 0;
     while (shutdown === false) {
         const startTime = Date.now();
+        let acquireTime = 0, averageProcessTime = 0, averageAckTime = 0, averageFileIOTime = 0, resetTime = startTime;
         try {
-            let logger = [startTime];
             let totalSamples = 0.0;
             const acquiredPartitions = await store.purgeAcquire(scriptManager, timeout, (2000 * 60), reTryTimeout, 1);
             if (acquiredPartitions.length === 0) {
                 pullcounter = processInOneLoop + 1;
             }
-            logger.push(Date.now());
+            acquireTime = Date.now() - resetTime;
             for (let index = 0; index < acquiredPartitions.length; index++) {
+                resetTime = Date.now();
                 const partitionInfo = acquiredPartitions[index];
                 let fileData = "";
                 partitionInfo.data.forEach((timeMap, tagId) => {
@@ -35,17 +36,23 @@ async function mainPurgeLoop(storeInfo) {
                         totalSamples++;
                     })
                 });
+                averageProcessTime += Date.now() - resetTime;
+
+                resetTime = Date.now();
                 await fs.appendFile(path.join(__dirname, storeInfo.cold, partitionInfo.releaseToken + ".txt"), fileData);
-                logger.push(Date.now());
+                averageFileIOTime += Date.now() - resetTime;
+
+                resetTime = Date.now();
                 const result = await store.purgeRelease(scriptManager, partitionInfo.releaseToken);
                 if (result !== true) {
                     throw new Error(`Ack failed! ${partitionInfo.releaseToken}.`);
                 }
-                logger.push(Date.now());
+                averageAckTime += Date.now() - resetTime;
             }
-            logger.push(Date.now());
-            const elapsed = Date.now() - startTime;
-            console.log(`=> T:${logger.reduce((acc, e, idx, arr) => acc.toString() + "," + (arr[idx] - arr[idx - 1]).toString())} P:${acquiredPartitions.length} S:${totalSamples} Rate:${((totalSamples / (elapsed / 1000))).toFixed(2)}/sec`);
+            const elapsed = (Date.now() - startTime) / 1000;
+            if (acquiredPartitions.length > 0) {
+                console.log(`=> T:${elapsed} A:${acquireTime} C:${(averageProcessTime / acquiredPartitions.length)} ACK:${(averageAckTime / acquiredPartitions.length)} IO:${(averageFileIOTime / acquiredPartitions.length)} P:${acquiredPartitions.length} S:${totalSamples} Rate:${((totalSamples / elapsed)).toFixed(2)}/sec`);
+            }
         }
         catch (err) {
             console.error(err);
