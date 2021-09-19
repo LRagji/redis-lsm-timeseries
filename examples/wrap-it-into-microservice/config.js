@@ -51,5 +51,3 @@ module.exports = {
         "PurgeMarker": "P"
     }
 }
-
-
