@@ -168,7 +168,7 @@ module.exports = class Timeseries {
         });
         returnData.forEach((timeMap, tagName) => {
             timeMap.forEach((payload, time) => {
-                timeMap.set(time, payload.pay);
+                timeMap.set(time, payload.p);
             });
             returnData.set(tagName, timeMap);
         });
@@ -243,7 +243,7 @@ module.exports = class Timeseries {
             this._parsePartitionData(serializedData[1], partitionInfo.start, tagId => acquiredPartitionInfo.data.get(tagId) || new Map(), acquiredPartitionInfo.data.set.bind(acquiredPartitionInfo.data));
             acquiredPartitionInfo.data.forEach((timeMap, tagName) => {
                 timeMap.forEach((payload, time) => {
-                    timeMap.set(time, payload.pay);
+                    timeMap.set(time, payload.p);
                 });
                 acquiredPartitionInfo.data.set(tagName, timeMap);
             })
@@ -395,7 +395,7 @@ module.exports = class Timeseries {
                         returnObject.error = `Conflicting partition name with Reserved Key for "PurgePendingKey" (${partitionName}).`;
                         return returnObject;
                     }
-                    const serializedSample = JSON.stringify({ 'pay': sample, 'rid': requestId.toString(), 'ctr': sampleCounter });
+                    const serializedSample = JSON.stringify({ 'p': sample, 'r': requestId.toString(), 'c': sampleCounter });
                     const sampleScore = this._computeTagSpaceStart(tagId) + (sampleTime - partitionStart);
                     const scoreTable = returnObject.payload.get(partitionName) || new Map();
                     scoreTable.set(serializedSample, sampleScore);
@@ -425,11 +425,11 @@ module.exports = class Timeseries {
             const time = (score % this._settings.PartitionTimeWidth) + partitionStart;
             const tagId = ((score - (score % this._settings.PartitionTimeWidth)) / this._settings.PartitionTimeWidth) + 1n;
             const timeMap = getTimeMap(tagId);
-            packet.rid = BigInt(packet.rid);
+            packet.r = BigInt(packet.r);
             let exisitingData = timeMap.get(time);
             if (exisitingData == null ||
-                exisitingData.rid < packet.rid ||
-                (exisitingData.rid === packet.rid && exisitingData.ctr < packet.ctr)) {
+                exisitingData.r < packet.r ||
+                (exisitingData.r === packet.r && exisitingData.c < packet.c)) {
                 exisitingData = packet;
             }
             timeMap.set(time, exisitingData);
