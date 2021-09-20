@@ -16,6 +16,10 @@ module.exports = class Timeseries {
             "ActivityKey": "Activity",
             "SamplesPerPartitionKey": "Stats",
             "PurgePendingKey": "Pending",
+            "InputRatePerf": "I",
+            "OutputRatePerf": "O",
+            "InputRateTime": "IT",
+            "OutputRateTime": "OT",
             "Seperator": "=",
             "MaximumTagsInOneWrite": 2000,
             "MaximumTagsInOneRead": 100,
@@ -83,6 +87,7 @@ module.exports = class Timeseries {
         this.read = this.read.bind(this);
         this.purgeAcquire = this.purgeAcquire.bind(this);
         this.purgeRelease = this.purgeRelease.bind(this);
+        this.diagnostic = this.diagnostic.bind(this);
         this._maximum = this._maximum.bind(this);
         this._minimum = this._minimum.bind(this);
         this._settingsHash = this._settingsHash.bind(this);
@@ -112,6 +117,7 @@ module.exports = class Timeseries {
                     .zadd(this._assembleRedisKey(partitionName), ...scoredSamples)//Main partition
                     .zadd(this._assembleRedisKey(this._settings.ActivityKey), serverTime[0], partitionName)//Activity for partition
                     .zincrby(this._assembleRedisKey(this._settings.SamplesPerPartitionKey), (scoredSamples.length / 2), partitionName)//Sample count for partition
+                    .incr(this._assembleRedisKey(this._settings.InputRatePerf))//Input rate for diagnostics.
                     .exec();
             })());
         });
@@ -262,7 +268,8 @@ module.exports = class Timeseries {
         }
         const keys = [
             this._assembleRedisKey(this._settings.PurgePendingKey),
-            this._assembleRedisKey(`${releaseToken}${this._settings.Seperator}${this._settings.PurgeMarker}`)
+            this._assembleRedisKey(`${releaseToken}${this._settings.Seperator}${this._settings.PurgeMarker}`),
+            this._assembleRedisKey(this._settings.OutputRatePerf),
         ];
         const args = [
             `${releaseToken}${this._settings.Seperator}${this._settings.PurgeMarker}`
@@ -276,6 +283,10 @@ module.exports = class Timeseries {
             });
         });
         return response === 1;
+    }
+
+    async diagnostic() {
+
     }
 
     _validateTransformReadParameters(tagRanges) {
@@ -393,6 +404,22 @@ module.exports = class Timeseries {
                     }
                     if (partitionName === this._settings.PurgePendingKey) {
                         returnObject.error = `Conflicting partition name with Reserved Key for "PurgePendingKey" (${partitionName}).`;
+                        return returnObject;
+                    }
+                    if (partitionName === this._settings.InputRatePerf) {
+                        returnObject.error = `Conflicting partition name with Reserved Key for "InputRatePerf" (${partitionName}).`;
+                        return returnObject;
+                    }
+                    if (partitionName === this._settings.OutputRatePerf) {
+                        returnObject.error = `Conflicting partition name with Reserved Key for "OutputRatePerf" (${partitionName}).`;
+                        return returnObject;
+                    }
+                    if (partitionName === this._settings.InputRateTime) {
+                        returnObject.error = `Conflicting partition name with Reserved Key for "InputRateTime" (${partitionName}).`;
+                        return returnObject;
+                    }
+                    if (partitionName === this._settings.OutputRateTime) {
+                        returnObject.error = `Conflicting partition name with Reserved Key for "OutputRateTime" (${partitionName}).`;
                         return returnObject;
                     }
                     const serializedSample = JSON.stringify({ 'p': sample, 'r': requestId.toString(), 'c': sampleCounter });

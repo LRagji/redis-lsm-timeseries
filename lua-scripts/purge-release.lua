@@ -1,11 +1,13 @@
 local PurgePendingKey = KEYS[1]
 local Partition = KEYS[2]
+local OutputRateKey = KEYS[3]
 
 local purgeMember = ARGV[1]
 
 redis.call("ZREM",PurgePendingKey,purgeMember)
 redis.call("DEL",Partition)
-
+local sampleCount = redis.call("ZCARD",OutputRateKey);
+redis.call("INCRBY",OutputRateKey,sampleCount);
 return 1
 
 -- docker run with -v ${PWD}:\"/var/lib/mysql\"
