@@ -54,7 +54,7 @@ async function mainPurgeLoop(storeInfo) {
             const ioTime = (averageFileIOTime / acquiredPartitions.length);
             const networkTime = acquireTime + (averageAckTime / acquiredPartitions.length);
             if (acquiredPartitions.length > 0) {
-                console.log(`=> T:${elapsed} N:${((networkTime / elapsed) * 100).toFixed()}% C:${((computeTime / elapsed) * 100).toFixed()}% IO:${((ioTime / elapsed) * 100).toFixed()}% P:${acquiredPartitions.length} S:${totalSamples} Rate:${((totalSamples / elapsed)).toFixed(2)}/sec`);
+                console.log(`=> T:${elapsed} N:${((networkTime / elapsed) * 100).toFixed()}% C:${((computeTime / elapsed) * 100).toFixed()}% IO:${((ioTime / elapsed) * 100).toFixed()}% P:${acquiredPartitions.length} S:${totalSamples} Rate:${((totalSamples / (elapsed / 1000))).toFixed(2)}/sec`);
             }
         }
         catch (err) {
