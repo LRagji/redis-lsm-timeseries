@@ -285,8 +285,24 @@ module.exports = class Timeseries {
         return response === 1;
     }
 
-    async diagnostic() {
+    async diagnostic(redisClient) {
+        const timeInMilliseconds = Date.now();
+        const response = await redisClient.pipeline()
+            .getset(this._assembleRedisKey(this._settings.InputRatePerf), 0)//Input rate
+            .getset(this._assembleRedisKey(this._settings.OutputRatePerf), 0)//Output rate
+            .getset(this._assembleRedisKey(this._settings.InputRateTime), timeInMilliseconds)//Input rate time
+            .getset(this._assembleRedisKey(this._settings.OutputRateTime), timeInMilliseconds)//output rate time.
+            .exec();
+        const inputCount = parseInt(response[0][1] || 1);
+        const outputCount = parseInt(response[1][1] || 1);
+        const inputTime = parseInt(response[2][1] || 1);
+        const outputTime = parseInt(response[3][1] || 1);
 
+        return {
+            "inputRate": inputCount / (inputTime === 1 ? inputTime : ((timeInMilliseconds - inputTime) / 1000)),
+            "outputRate": outputCount / (outputTime === 1 ? outputTime : ((timeInMilliseconds - outputTime) / 1000)),
+            "deltaRate": (inputCount - outputCount) / (outputTime === 1 ? outputTime : ((timeInMilliseconds - outputTime) / 1000))
+        }
     }
 
     _validateTransformReadParameters(tagRanges) {

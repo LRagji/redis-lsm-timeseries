@@ -12,7 +12,8 @@ async function mainPurgeLoop(storeInfo) {
     const coolDownTime = 2000;
     const processInOneLoop = 5;
     const store = new timeseriesType(config.tagToPartitionMapping, config.partitionToRedisMapping, config.tagNameToTagId, config.settings);
-    const scriptManager = new scripto(new redisType(storeInfo.hot));
+    const redisClient = new redisType(storeInfo.hot);
+    const scriptManager = new scripto(redisClient);
 
     let shutdown = false;
     let pullcounter = 0;
@@ -54,7 +55,8 @@ async function mainPurgeLoop(storeInfo) {
             const ioTime = (averageFileIOTime / acquiredPartitions.length);
             const networkTime = acquireTime + (averageAckTime / acquiredPartitions.length);
             if (acquiredPartitions.length > 0) {
-                console.log(`=> T:${elapsed} N:${((networkTime / elapsed) * 100).toFixed()}% C:${((computeTime / elapsed) * 100).toFixed()}% IO:${((ioTime / elapsed) * 100).toFixed()}% P:${acquiredPartitions.length} S:${totalSamples} Rate:${((totalSamples / (elapsed / 1000))).toFixed(2)}/sec`);
+                const data = await store.diagnostic(redisClient);
+                console.log(`=> T:${elapsed} N:${((networkTime / elapsed) * 100).toFixed()}% C:${((computeTime / elapsed) * 100).toFixed()}% IO:${((ioTime / elapsed) * 100).toFixed()}% P:${acquiredPartitions.length} S:${totalSamples} Rate:${((totalSamples / (elapsed / 1000))).toFixed(2)}/sec I:${data.inputRate.toFixed()} O:${data.outputRate.toFixed()} D:${data.deltaRate.toFixed()}`);
             }
         }
         catch (err) {

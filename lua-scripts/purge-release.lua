@@ -5,8 +5,8 @@ local OutputRateKey = KEYS[3]
 local purgeMember = ARGV[1]
 
 redis.call("ZREM",PurgePendingKey,purgeMember)
+local sampleCount = redis.call("ZCARD",Partition);
 redis.call("DEL",Partition)
-local sampleCount = redis.call("ZCARD",OutputRateKey);
 redis.call("INCRBY",OutputRateKey,sampleCount);
 return 1
 
