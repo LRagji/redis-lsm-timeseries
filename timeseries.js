@@ -117,7 +117,7 @@ module.exports = class Timeseries {
                     .zadd(this._assembleRedisKey(partitionName), ...scoredSamples)//Main partition
                     .zadd(this._assembleRedisKey(this._settings.ActivityKey), serverTime[0], partitionName)//Activity for partition
                     .zincrby(this._assembleRedisKey(this._settings.SamplesPerPartitionKey), (scoredSamples.length / 2), partitionName)//Sample count for partition
-                    .incr(this._assembleRedisKey(this._settings.InputRatePerf))//Input rate for diagnostics.
+                    .incrby(this._assembleRedisKey(this._settings.InputRatePerf), (scoredSamples.length / 2))//Input rate for diagnostics.
                     .exec();
             })());
         });
