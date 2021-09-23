@@ -29,14 +29,14 @@ module.exports = class Timeseries {
             "PurgeMarker": "P"
         }) {
         //Validations
-        if ({}.toString.call(tagPartitionResolver) !== '[object Function]') {
-            throw new Error(`Invalid parameter "tagPartitionResolver" should be a function.`);
+        if ({}.toString.call(tagPartitionResolver) !== '[object AsyncFunction]') {
+            throw new Error(`Invalid parameter "tagPartitionResolver" should be a async function, but is ${{}.toString.call(tagPartitionResolver)}`);
         }
-        if ({}.toString.call(partitionRedisConnectionResolver) !== '[object Function]') {
-            throw new Error(`Invalid parameter "partitionRedisConnectionResolver" should be a function.`);
+        if ({}.toString.call(partitionRedisConnectionResolver) !== '[object AsyncFunction]') {
+            throw new Error(`Invalid parameter "partitionRedisConnectionResolver" should be a async function, but is ${{}.toString.call(partitionRedisConnectionResolver)}`);
         }
-        if ({}.toString.call(tagNumericIdentityResolver) !== '[object Function]') {
-            throw new Error(`Invalid parameter "tagNumericIdentityResolver" should be a function.`);
+        if ({}.toString.call(tagNumericIdentityResolver) !== '[object AsyncFunction]') {
+            throw new Error(`Invalid parameter "tagNumericIdentityResolver" should be a async function, but is ${{}.toString.call(tagNumericIdentityResolver)}`);
         }
         if (settings.ActivityKey === settings.SamplesPerPartitionKey) {
             throw new Error(`Invalid settings "ActivityKey" & "SamplesPerPartitionKey" cannot be same.`);
@@ -144,7 +144,6 @@ module.exports = class Timeseries {
         for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
             const partitionName = keys[keyIndex];
             const ranges = transformed.ranges.get(partitionName);
-            //transformed.ranges.forEach((ranges, partitionName) => {
             const redisClient = await this._partitionRedisConnectionResolver(partitionName);
             const purgedPartitionName = `${partitionName}${this._settings.Seperator}${this._settings.PurgeMarker}`;
             asyncCommands = asyncCommands.concat(ranges.map(async range => {
