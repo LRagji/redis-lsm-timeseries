@@ -56,10 +56,10 @@ module.exports = class Timeseries {
 
         this._tagPartitionResolver = tagPartitionResolver;
         this._partitionRedisConnectionResolver = partitionRedisConnectionResolver;
-        this._tagNumericIdentityResolver = tagName => {
+        this._tagNumericIdentityResolver = async tagName => {
             const redisMaximumScore = 9007199254740992n// Maximum score:https://redis.io/commands/ZADD
             const maxLimit = (redisMaximumScore / settings.PartitionTimeWidth);
-            const tagId = BigInt(tagNumericIdentityResolver(tagName));
+            const tagId = BigInt(await tagNumericIdentityResolver(tagName));
 
             if (tagId < 1n) {
                 throw new Error("Tag numeric id's cannot be less than 1.");
@@ -101,7 +101,7 @@ module.exports = class Timeseries {
 
     async write(tagTimeMap, requestId = Date.now()) {
 
-        const transformed = this._validateTransformWriteParameters(tagTimeMap, requestId);
+        const transformed = await this._validateTransformWriteParameters(tagTimeMap, requestId);
 
         if (transformed.error !== null) {
             return Promise.reject(transformed.error);
@@ -133,7 +133,7 @@ module.exports = class Timeseries {
     }
 
     async read(tagRanges) {
-        const transformed = this._validateTransformReadParameters(tagRanges);
+        const transformed = await this._validateTransformReadParameters(tagRanges);
 
         if (transformed.error !== null) {
             return Promise.reject(transformed.error);
@@ -305,7 +305,7 @@ module.exports = class Timeseries {
         }
     }
 
-    _validateTransformReadParameters(tagRanges) {
+    async _validateTransformReadParameters(tagRanges) {
         const returnObject = { "error": null, ranges: new Map() };
         if (tagRanges instanceof Map === false) {
             returnObject.error = `Parameter 'tagRanges' should be of type 'Map' instead of ${typeof (tagRanges)}`;
@@ -318,7 +318,10 @@ module.exports = class Timeseries {
         }
 
         const errors = [];
-        tagRanges.forEach((range, tagName) => {
+        const keys = Array.from(tagRanges.keys());
+        for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+            const tagName = keys[keyIndex];
+            const range = tagRanges.get(tagName);
             let start, end;
             try {
                 start = BigInt(range.start);
@@ -343,7 +346,7 @@ module.exports = class Timeseries {
                 errors.push(`Invalid range; start should be smaller than end for ${tagName}.`);
                 return;
             }
-            const tagId = this._tagNumericIdentityResolver(tagName);
+            const tagId = await this._tagNumericIdentityResolver(tagName);
             const tagOffset = this._computeTagSpaceStart(tagId);
             while (start < end) {
                 const partitionName = `${this._tagPartitionResolver(tagName)}${this._settings.Seperator}${start}`;
@@ -362,7 +365,7 @@ module.exports = class Timeseries {
                     break;
                 }
             }
-        });
+        };
 
         if (returnObject.ranges.size === 0 && errors.length == 0) {
             returnObject.error = `Parameter 'partitionRanges' should contain atleast one range for query.`;
@@ -377,7 +380,7 @@ module.exports = class Timeseries {
         return returnObject;
     }
 
-    _validateTransformWriteParameters(tagTimeMap, requestId) {
+    async _validateTransformWriteParameters(tagTimeMap, requestId) {
         const returnObject = { "error": null, payload: new Map() };
         const errors = [];
         let sampleCounter = 0;
@@ -392,8 +395,10 @@ module.exports = class Timeseries {
             returnObject.error = `Parameter 'tagTimeMap' should be of type 'Map' instead of ${typeof (tagTimeMap)}`;
             return returnObject;
         }
-
-        tagTimeMap.forEach((timeDataMap, tagName) => {
+        const tagKeys = Array.from(tagTimeMap.keys());
+        for (let tagKeyIndex = 0; tagKeyIndex < tagKeys.length; tagKeyIndex++) {
+            const tagName = tagKeys[tagKeyIndex];
+            const timeDataMap = tagTimeMap.get(tagName);
             if (timeDataMap instanceof Map === false) {
                 errors.push(`Tag "${tagName}" has element which is not of type "Map".`);
             }
@@ -401,14 +406,17 @@ module.exports = class Timeseries {
                 errors.push(`Tag "${tagName}" has name which extends character limit(${this._settings.MaximumTagNameLength}).`);
             }
             else {
-                timeDataMap.forEach((sample, sampleTime) => {
+                const keys = Array.from(timeDataMap.keys());
+                for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+                    let sampleTime = keys[keyIndex];
+                    const sample = timeDataMap.get(sampleTime);
                     if (sampleCounter > this._settings.MaximumTagsInOneWrite) {
                         returnObject.error = `Sample size exceeded limit of ${this._settings.MaximumTagsInOneWrite}.`;
                         return returnObject;
                     }
                     sampleTime = BigInt(sampleTime);
                     const partitionStart = sampleTime - (sampleTime % this._settings.PartitionTimeWidth);
-                    const tagId = this._tagNumericIdentityResolver(tagName);
+                    const tagId = await this._tagNumericIdentityResolver(tagName);
                     const partitionName = `${this._tagPartitionResolver(tagName)}${this._settings.Seperator}${partitionStart}`;
                     if (partitionName === this._settings.ActivityKey) {
                         returnObject.error = `Conflicting partition name with Reserved Key for "Activity" (${partitionName}).`;
@@ -444,9 +452,9 @@ module.exports = class Timeseries {
                     scoreTable.set(serializedSample, sampleScore);
                     returnObject.payload.set(partitionName, scoreTable);
                     sampleCounter++;
-                });
+                };
             }
-        });
+        };
 
         if (sampleCounter === 0 && errors.length == 0) {
             returnObject.error = `Parameter 'tagTimeMap' should contain atleast one item to insert.`;
