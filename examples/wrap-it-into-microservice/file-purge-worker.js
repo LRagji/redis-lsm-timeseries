@@ -22,7 +22,7 @@ async function mainPurgeLoop(storeInfo) {
         let acquireTime = 0, averageProcessTime = 0, averageAckTime = 0, averageFileIOTime = 0, resetTime = startTime;
         try {
             let totalSamples = 0.0;
-            const acquiredPartitions = await store.purgeAcquire(scriptManager, timeout, (2000 * 60), reTryTimeout, 1);
+            const acquiredPartitions = await store.purgeAcquire(scriptManager, timeout, (config.MaxTagsPerPartition * (config.PartitionTimeWidth / 1000)), reTryTimeout, 1);
             if (acquiredPartitions.length === 0) {
                 pullcounter = processInOneLoop + 1;
             }
@@ -48,6 +48,8 @@ async function mainPurgeLoop(storeInfo) {
                 if (result !== true) {
                     throw new Error(`Ack failed! ${partitionInfo.releaseToken}.`);
                 }
+                //Clear idendity so redis doesnot overflow.
+                await config.clearPartitionIdentity(partitionInfo.releaseToken);
                 averageAckTime += Date.now() - resetTime;
             }
             const elapsed = (Date.now() - startTime);
