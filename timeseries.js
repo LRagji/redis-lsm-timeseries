@@ -274,9 +274,7 @@ module.exports = class Timeseries {
             this._assembleRedisKey(`${releaseToken}${this._settings.Seperator}${this._settings.PurgeMarker}`),
             this._assembleRedisKey(this._settings.OutputRatePerf),
         ];
-        const args = [
-            `${releaseToken}${this._settings.Seperator}${this._settings.PurgeMarker}`
-        ];
+        const args = [releaseToken];
         const response = await new Promise((acc, rej) => {
             scriptoServer.run(PURGE_RELEASE_SCRIPT_NAME, keys, args, (err, result) => {
                 if (err !== null) {

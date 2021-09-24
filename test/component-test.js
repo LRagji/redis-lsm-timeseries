@@ -4,9 +4,9 @@ let redisClient;
 const timeseriesType = require('../timeseries.js');
 const scripto = require('redis-scripto2');
 let target = null;
-const hash = (tagName) => Array.from(tagName).reduce((acc, c) => acc + c.charCodeAt(0), 0);
-const tagToPartitionMapping = (tagName) => hash(tagName) % 10;
-const partitionToRedisMapping = (partitionName) => redisClient;
+const hash = async (tagName) => Array.from(tagName).reduce((acc, c) => acc + c.charCodeAt(0), 0);
+const tagToPartitionMapping = async (tagName) => await hash(tagName) % 10;
+const partitionToRedisMapping = async (partitionName) => redisClient;
 const tagnameToTagId = hash;
 const settings = {
     "ActivityKey": "Activity",
@@ -117,7 +117,7 @@ describe('Timeseries consumer tests', function () {
         assert.strictEqual(purgeResults[0].name !== "" && purgeResults[0].name !== null, true);
         assert.strictEqual(purgeResults[0].releaseToken !== "" && purgeResults[0].releaseToken !== null, true);
         const tag = "SerialTag";
-        assert.deepStrictEqual(purgeResults[0].data.get(BigInt(hash(tag))), inputData.get(tag));
+        assert.deepStrictEqual(purgeResults[0].data.get(BigInt(await hash(tag))), inputData.get(tag));
         assert.deepStrictEqual(releaseResults, true);
     });
 
@@ -150,17 +150,17 @@ describe('Timeseries consumer tests', function () {
         let tag = "SerialTag";
         assert.strictEqual(purgeResults[0].name !== "" && purgeResults[0].name !== null, true);
         assert.strictEqual(purgeResults[0].releaseToken !== "" && purgeResults[0].releaseToken !== null, true);
-        assert.deepStrictEqual(purgeResults[0].data.get(BigInt(hash(tag))), inputData.get(tag));
+        assert.deepStrictEqual(purgeResults[0].data.get(BigInt(await hash(tag))), inputData.get(tag));
         tag = "GapTag";
         assert.strictEqual(purgeResults[1].name !== "" && purgeResults[1].name !== null, true);
         assert.strictEqual(purgeResults[1].releaseToken !== "" && purgeResults[1].releaseToken !== null, true);
-        assert.deepStrictEqual(purgeResults[1].data.get(BigInt(hash(tag))), new Map([[1n, "One"], [2n, "Two"]]));
+        assert.deepStrictEqual(purgeResults[1].data.get(BigInt(await hash(tag))), new Map([[1n, "One"], [2n, "Two"]]));
         assert.strictEqual(purgeResults[2].name !== "" && purgeResults[1].name !== null, true);
         assert.strictEqual(purgeResults[3].releaseToken !== "" && purgeResults[1].releaseToken !== null, true);
-        assert.deepStrictEqual(purgeResults[2].data.get(BigInt(hash(tag))), new Map([[10n, "Ten"]]));
+        assert.deepStrictEqual(purgeResults[2].data.get(BigInt(await hash(tag))), new Map([[10n, "Ten"]]));
         assert.strictEqual(purgeResults[3].name !== "" && purgeResults[1].name !== null, true);
         assert.strictEqual(purgeResults[3].releaseToken !== "" && purgeResults[1].releaseToken !== null, true);
-        assert.deepStrictEqual(purgeResults[3].data.get(BigInt(hash(tag))), new Map([[20n, "Twenty"]]));
+        assert.deepStrictEqual(purgeResults[3].data.get(BigInt(await hash(tag))), new Map([[20n, "Twenty"]]));
         assert.deepStrictEqual(releaseResults, true);
     });
 
@@ -196,11 +196,11 @@ describe('Timeseries consumer tests', function () {
         assert.strictEqual(purgeResults1[0].name !== "" && purgeResults1[0].name !== null, true);
         assert.strictEqual(purgeResults1[0].releaseToken !== "" && purgeResults1[0].releaseToken !== null, true);
         const tag = "SerialTag";
-        assert.deepStrictEqual(purgeResults1[0].data.get(BigInt(hash(tag))), inputData.get(tag));
+        assert.deepStrictEqual(purgeResults1[0].data.get(BigInt(await hash(tag))), inputData.get(tag));
         assert.strictEqual(purgeResults2.length, 1);
         assert.strictEqual(purgeResults2[0].name !== "" && purgeResults2[0].name !== null, true);
         assert.strictEqual(purgeResults2[0].releaseToken !== "" && purgeResults2[0].releaseToken !== null, true);
-        assert.deepStrictEqual(purgeResults2[0].data.get(BigInt(hash(tag))), inputData.get(tag));
+        assert.deepStrictEqual(purgeResults2[0].data.get(BigInt(await hash(tag))), inputData.get(tag));
         assert.deepStrictEqual(releaseResults, true);
     });
 
@@ -230,7 +230,7 @@ describe('Timeseries consumer tests', function () {
         assert.strictEqual(purgeResults[0].name !== "" && purgeResults[0].name !== null, true);
         assert.strictEqual(purgeResults[0].releaseToken !== "" && purgeResults[0].releaseToken !== null, true);
         const tag = "SerialTag";
-        assert.deepStrictEqual(purgeResults[0].data.get(BigInt(hash(tag))), inputData.get(tag));
+        assert.deepStrictEqual(purgeResults[0].data.get(BigInt(await hash(tag))), inputData.get(tag));
         assert.deepStrictEqual(readResults, inputData);
     });
 
@@ -260,7 +260,7 @@ describe('Timeseries consumer tests', function () {
         assert.strictEqual(purgeResults[0].name !== "" && purgeResults[0].name !== null, true);
         assert.strictEqual(purgeResults[0].releaseToken !== "" && purgeResults[0].releaseToken !== null, true);
         const tag = "SerialTag";
-        assert.deepStrictEqual(purgeResults[0].data.get(BigInt(hash(tag))), inputData.get(tag));
+        assert.deepStrictEqual(purgeResults[0].data.get(BigInt(await hash(tag))), inputData.get(tag));
         assert.deepStrictEqual(readResults, inputData);
     });
 
@@ -293,7 +293,7 @@ describe('Timeseries consumer tests', function () {
         assert.strictEqual(purgeResults[0].name !== "" && purgeResults[0].name !== null, true);
         assert.strictEqual(purgeResults[0].releaseToken !== "" && purgeResults[0].releaseToken !== null, true);
         const tag = "SerialTag";
-        assert.deepStrictEqual(purgeResults[0].data.get(BigInt(hash(tag))), inputData.get(tag));
+        assert.deepStrictEqual(purgeResults[0].data.get(BigInt(await hash(tag))), inputData.get(tag));
         assert.deepStrictEqual(releaseResults, true);
         inputData.delete(tag);
         assert.deepStrictEqual(readResults, inputData);
