@@ -29,14 +29,14 @@ module.exports = class Timeseries {
             "PurgeMarker": "P"
         }) {
         //Validations
-        if ({}.toString.call(tagPartitionResolver) !== '[object Function]') {
-            throw new Error(`Invalid parameter "tagPartitionResolver" should be a function.`);
+        if ({}.toString.call(tagPartitionResolver) !== '[object AsyncFunction]') {
+            throw new Error(`Invalid parameter "tagPartitionResolver" should be a async function, but is ${{}.toString.call(tagPartitionResolver)}`);
         }
-        if ({}.toString.call(partitionRedisConnectionResolver) !== '[object Function]') {
-            throw new Error(`Invalid parameter "partitionRedisConnectionResolver" should be a function.`);
+        if ({}.toString.call(partitionRedisConnectionResolver) !== '[object AsyncFunction]') {
+            throw new Error(`Invalid parameter "partitionRedisConnectionResolver" should be a async function, but is ${{}.toString.call(partitionRedisConnectionResolver)}`);
         }
-        if ({}.toString.call(tagNumericIdentityResolver) !== '[object Function]') {
-            throw new Error(`Invalid parameter "tagNumericIdentityResolver" should be a function.`);
+        if ({}.toString.call(tagNumericIdentityResolver) !== '[object AsyncFunction]') {
+            throw new Error(`Invalid parameter "tagNumericIdentityResolver" should be a async function, but is ${{}.toString.call(tagNumericIdentityResolver)}`);
         }
         if (settings.ActivityKey === settings.SamplesPerPartitionKey) {
             throw new Error(`Invalid settings "ActivityKey" & "SamplesPerPartitionKey" cannot be same.`);
@@ -110,7 +110,7 @@ module.exports = class Timeseries {
         let asyncCommands = [];
         transformed.payload.forEach((samples, partitionName) => {
             asyncCommands.push((async () => {
-                const redisClient = this._partitionRedisConnectionResolver(partitionName);
+                const redisClient = await this._partitionRedisConnectionResolver(partitionName);
                 const scoredSamples = Array.from(samples, kvp => kvp.reverse()).flatMap(kvp => kvp);
                 const serverTime = await redisClient.time();
                 return await redisClient.pipeline()
@@ -140,8 +140,11 @@ module.exports = class Timeseries {
         }
 
         let asyncCommands = [];
-        transformed.ranges.forEach((ranges, partitionName) => {
-            const redisClient = this._partitionRedisConnectionResolver(partitionName);
+        const keys = Array.from(transformed.ranges.keys());
+        for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+            const partitionName = keys[keyIndex];
+            const ranges = transformed.ranges.get(partitionName);
+            const redisClient = await this._partitionRedisConnectionResolver(partitionName);
             const purgedPartitionName = `${partitionName}${this._settings.Seperator}${this._settings.PurgeMarker}`;
             asyncCommands = asyncCommands.concat(ranges.map(async range => {
                 const multiResponse = await redisClient.pipeline()
@@ -151,7 +154,7 @@ module.exports = class Timeseries {
                 range.response = multiResponse.reduce((accum, e) => accum[1].concat(e[1]));//Sequence matters cause of time sorted keys.
                 return range;
             }));
-        });
+        };
 
         let results = await Promise.allSettled(asyncCommands);
         let returnData = new Map();
@@ -349,7 +352,7 @@ module.exports = class Timeseries {
             const tagId = await this._tagNumericIdentityResolver(tagName);
             const tagOffset = this._computeTagSpaceStart(tagId);
             while (start < end) {
-                const partitionName = `${this._tagPartitionResolver(tagName)}${this._settings.Seperator}${start}`;
+                const partitionName = `${await this._tagPartitionResolver(tagName)}${this._settings.Seperator}${start}`;
                 let readFrom = this._maximum(start, BigInt(range.start));
                 let readTill = this._minimum((start + (this._settings.PartitionTimeWidth - 1n)), end)
                 readFrom = readFrom === 0n ? readFrom : readFrom - start;
@@ -417,7 +420,7 @@ module.exports = class Timeseries {
                     sampleTime = BigInt(sampleTime);
                     const partitionStart = sampleTime - (sampleTime % this._settings.PartitionTimeWidth);
                     const tagId = await this._tagNumericIdentityResolver(tagName);
-                    const partitionName = `${this._tagPartitionResolver(tagName)}${this._settings.Seperator}${partitionStart}`;
+                    const partitionName = `${await this._tagPartitionResolver(tagName)}${this._settings.Seperator}${partitionStart}`;
                     if (partitionName === this._settings.ActivityKey) {
                         returnObject.error = `Conflicting partition name with Reserved Key for "Activity" (${partitionName}).`;
                         return returnObject;
