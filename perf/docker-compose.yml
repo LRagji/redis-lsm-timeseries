@@ -1,29 +1,7 @@
 version: '3.8'
 services:
-  coordinator:
-    image: "redis:latest"
-  hot-shard1:
-    image: "redis:latest"
-    # ports:
-    #   - "6380:6379"
-  hot-shard2:
-    image: "redis:latest"
-    # ports:
-    #   - "6381:6379"
   timeseries:
     image: "lragji/ts-v2.0"
-    environment:
-      - coo=redis://coordinator:6379/
-      - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/
-      - cold=/raw-db/ /raw-db/
-      - mode=FILE
-    depends_on: 
-      - "hot-shard1"
-      # - "hot-shard2"
-    # ports:
-    #   - "80:3000"
-    volumes:
-      - ./raw-db/:/usr/src/app/examples/wrap-it-into-microservice/raw-db/
   jmeter:
     image: "justb4/jmeter:latest"
     container_name: jmeter
@@ -43,12 +21,3 @@ services:
       - "-o /app/results"
       - "-JTARGET_HOST=timeseries"
       - "-JTARGET_PORT=3000"
-  # cold-shard1:
-  #   image: postgres:11.4
-  #   restart: always
-  #   environment:
-  #     - POSTGRES_USER=userxyz
-  #     - POSTGRES_PASSWORD=password123
-  #     - POSTGRES_DB=mydb1
-  #   ports:
-  #     - "5434:5432"

@@ -6,7 +6,8 @@
   "scripts": {
     "mocha": " nyc --reporter=html --reporter=text mocha",
     "test": "npm run redisstart && npm run mocha",
-    "perf": "docker-compose -f perf/docker-compose.yml up --abort-on-container-exit --exit-code-from jmeter && docker-compose -f perf/docker-compose.yml rm -f",
+    "perf": "npm run docker-build && docker-compose -f perf/docker-compose.yml up --abort-on-container-exit --exit-code-from jmeter && docker-compose -f perf/docker-compose.yml rm -f",
+    "perf-scalled": "npm run docker-build && docker-compose -f perf/docker-compose.yml up --scale timeseries=2 --abort-on-container-exit --exit-code-from jmeter && docker-compose -f perf/docker-compose.yml rm -f",
     "jmeter": "run-script-os",
     "redisstop": "docker stop streamz",
     "redisstart": "(npm run redisstop || node -v )&& docker run --name streamz -p 6379:6379 -itd --rm redis:latest",

@@ -2,5 +2,5 @@
 .git
 .cache
 node_modules
-examples/wrap-it-into-microservice/raw-db
+raw-db
 perf/raw-db
