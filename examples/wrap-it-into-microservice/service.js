@@ -78,6 +78,18 @@ if (workerName != null) {
 else {
     console.log("Running in standalone mode, No data purge strategy specified.");
 }
-app.listen(port, () => {
+const server = app.listen(port, () => {
     console.log(`${consumerName} listening at http://localhost:${port}`);
+});
+
+var signalsToAccept = {
+    'SIGHUP': 1,
+    'SIGINT': 2,
+    'SIGTERM': 15
+};
+Object.keys(signalsToAccept).forEach((signal) => {
+    process.on(signal, () => {
+        console.log(`process received a ${signal} signal`);
+        server.close();//Stops accepting new connections existing connections will need to exit on themselves. 
+    });
 });

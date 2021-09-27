@@ -7,8 +7,21 @@ const config = require("./config");
 const scripto = require('redis-scripto2');
 
 async function mainPurgeLoop(storeInfo) {
-    const timeout = 60;
-    const reTryTimeout = 60 * 10;//10Mins
+
+    //Setup shutdown sequence
+    var signalsToAccept = {
+        'SIGHUP': 1,
+        'SIGINT': 2,
+        'SIGTERM': 15
+    };
+    Object.keys(signalsToAccept).forEach((signal) => {
+        process.on(signal, () => {
+            console.log(`process received a ${signal} signal`);
+            shutdown = true;
+        });
+    });
+    //end sequence
+    const partitionTimeWidthInseconds = (config.settings.PartitionTimeWidth / 1000);
     const coolDownTime = 2000;
     const processInOneLoop = 5;
     const store = new timeseriesType(config.tagToPartitionMapping, config.partitionToRedisMapping, config.tagNameToTagId, config.settings);
@@ -22,7 +35,7 @@ async function mainPurgeLoop(storeInfo) {
         let acquireTime = 0, averageProcessTime = 0, averageAckTime = 0, averageFileIOTime = 0, resetTime = startTime;
         try {
             let totalSamples = 0.0;
-            const acquiredPartitions = await store.purgeAcquire(scriptManager, timeout, (BigInt(config.MaxTagsPerPartition) * (config.settings.PartitionTimeWidth / 1000n)), reTryTimeout, 1);
+            const acquiredPartitions = await store.purgeAcquire(scriptManager, partitionTimeWidthInseconds * 2, (config.MaxTagsPerPartition * partitionTimeWidthInseconds), partitionTimeWidthInseconds * 4, 1);
             if (acquiredPartitions.length === 0) {
                 pullcounter = processInOneLoop + 1;
             }
