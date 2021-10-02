@@ -1,0 +1,3 @@
+FROM justb4/jmeter:latest
+COPY perf /app
+ENTRYPOINT ["/entrypoint.sh" , "-n" , "-t /app/PerfTest.jmx", "-l /app/jmeter.jtl", "-j /app/jmeter.log", "-f" , "-e" , "-o /app/results/1", "-JTARGET_HOST=timeseries", "-JTARGET_PORT=3000"]

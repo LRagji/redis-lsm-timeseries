@@ -1,0 +1,64 @@
+version: '3.8'
+services:
+  coordinator:
+    image: "redis:latest"
+    deploy:
+      resources:
+        reservations:
+          memory: 1G
+  hot-shard1:
+    image: "redis:latest"
+    deploy:
+      resources:
+        reservations:
+          memory: 4G
+  hot-shard2:
+    image: "redis:latest"
+    deploy:
+      resources:
+        reservations:
+          memory: 4G
+  timeseries:
+    image: "lragji/ts-v2.0"
+    environment:
+      - coo=redis://coordinator:6379/
+      - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/
+      - cold=/raw-db/ /raw-db/
+    depends_on: 
+      - "hot-shard1"
+      - "hot-shard2"
+      - "coordinator"
+    ports:
+      - 3000
+    volumes:
+      - raw-db:/usr/src/app/examples/wrap-it-into-microservice/raw-db/
+    deploy:
+      resources:
+        reservations:
+          memory: 2G
+  jmeter:
+    image: "lragji/awsjmeter"
+    container_name: jmeter
+    depends_on: 
+      - "timeseries"
+    volumes:
+      - jmeter-fs:/app/results
+    deploy:
+      resources:
+        reservations:
+          memory: 4G
+volumes:
+  raw-db:
+    driver_opts:
+        backup_policy: ENABLED
+        lifecycle_policy: AFTER_7_DAYS
+        performance_mode: maxIO
+        throughput_mode: provisioned
+        provisioned_throughput: 1024
+  jmeter-fs:
+      driver_opts:
+        backup_policy: ENABLED
+        lifecycle_policy: AFTER_7_DAYS
+        performance_mode: maxIO
+        throughput_mode: provisioned
+        provisioned_throughput: 1024
