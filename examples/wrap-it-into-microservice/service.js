@@ -14,6 +14,9 @@ app.use(express.json());
 app.use(compression());
 
 app.post('/set', async (req, res) => {
+    let startTime = Date.now();
+    let logOrNot = Date.now();
+    let log = "";
     try {
         const data = new Map();
         Object.keys(req.body).forEach((tagName) => {
@@ -23,9 +26,14 @@ app.post('/set', async (req, res) => {
             });
             data.set(tagName, orderedData);
         });
+        log += " P: " + (Date.now() - startTime);
+        startTime = Date.now();
         const response = await store.write(data);
-        if (response === true) {
+        log += " W: " + (Date.now() - startTime);
+        startTime = Date.now();
+        if (response != "") {
             res.status(204).end();
+            log += response;
         }
         else {
             res.status(400).json({ "error": "Failed to save data." });
@@ -34,6 +42,9 @@ app.post('/set', async (req, res) => {
     }
     catch (err) {
         res.status(500).json(err.stack);
+    }
+    if (Date.now() - logOrNot > 30000) {
+        console.log(log);
     }
 });
 
@@ -89,7 +100,7 @@ var signalsToAccept = {
 };
 Object.keys(signalsToAccept).forEach((signal) => {
     process.on(signal, () => {
-        console.log(`process received a ${signal} signal`);
-        server.close();//Stops accepting new connections existing connections will need to exit on themselves. 
+        console.log(`Http Server received a ${signal} signal`);
+        server.close((err) => process.exit(0));//Stops accepting new connections existing connections will need to exit on themselves.
     });
 });

@@ -10,16 +10,19 @@ let stores = [
 ];
 
 const MaxTagsPerPartition = 2000;
-const buffer = new SharedArrayBuffer(8);
-const uint8 = new Uint8Array(buffer);
-uint8[0] = 0;
+const shardBuffer = new SharedArrayBuffer(8);
+const shardCounter = new Uint8Array(shardBuffer);
+shardCounter[0] = 0;
+const cordinatorBuffer = new SharedArrayBuffer(8);
+const cordinatorCounter = new Uint8Array(cordinatorBuffer);
+cordinatorCounter[0] = 0;
 
 async function hash(tagName, name = "Tags") {
     const inMemoryKey = `${name}${tagName}`;
     const existingId = identityCache.get(inMemoryKey);
     if (existingId == null) {
         const hash = await new Promise((acc, rej) => {
-            coordinator.run("identity", [name, name + "Ctr"], [tagName], (err, result) => {
+            coordinators[sequentialCount(cordinatorCounter, coordinators.length)].run("identity", [name, name + "Ctr"], [tagName], (err, result) => {
                 if (err !== null) {
                     return rej(err);
                 }
@@ -39,7 +42,7 @@ async function hash(tagName, name = "Tags") {
 async function clearPartitionIdentity(partitionName) {
     //console.log("Cleared: " + partitionName);
     const response = await new Promise((acc, rej) => {
-        coordinator.run("clear-identity", [partitionsKey], [partitionName], (err, result) => {
+        coordinators[sequentialCount(cordinatorCounter, coordinators.length)].run("clear-identity", [partitionsKey], [partitionName], (err, result) => {
             if (err !== null) {
                 return rej(err);
             }
@@ -56,7 +59,7 @@ async function clearPartitionIdentity(partitionName) {
 async function redisShard(partitionName) {
     const index = await hash(partitionName, partitionsKey) % shards.length;
     //console.log(`${partitionName} => ${index}`);
-    return shards[index].hot[(Atomics.add(uint8, 0, 1) % shards[index].hot.length)];
+    return shards[index].hot[sequentialCount(shardCounter, shards[index].hot.length)];
 }
 
 async function tagGrouping(tagName) {
@@ -64,10 +67,18 @@ async function tagGrouping(tagName) {
     return tagId - (tagId % MaxTagsPerPartition);
 }
 
+function sequentialCount(memory, maxcount) {
+    return Atomics.add(memory, 0, 1) % maxcount;
+}
+
 const hotStores = (process.env.hot || process.env.HOT).split(' ');
 const coldStores = (process.env.cold || process.env.COLD || "").split(' ');
-const coordinator = new scripto(new redisType(process.env.coo || process.env.COO));
-coordinator.loadFromDir(path.join(__dirname, "lua"));
+const coordinatorConnection = process.env.coo || process.env.COO;
+const coordinators = Array.from({ length: clientsPerShard }, _ => {
+    const scriptManager = new scripto(new redisType(coordinatorConnection));
+    scriptManager.loadFromDir(path.join(__dirname, "lua"));
+    return scriptManager;
+})
 stores = hotStores.map((h, idx) => ({ "hot": h, "cold": coldStores[idx] }));
 const shards = stores.map(storeInfo => ({ "hot": Array.from({ length: clientsPerShard }, _ => new redisType(storeInfo.hot)), "cold": storeInfo.cold }));
 // setInterval(() => {

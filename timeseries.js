@@ -101,35 +101,46 @@ module.exports = class Timeseries {
 
     async write(tagTimeMap, requestId = Date.now()) {
 
+        let sDate = Date.now();
+        let log = " ";
         const transformed = await this._validateTransformWriteParameters(tagTimeMap, requestId);
+        log += " W.T: " + (Date.now() - sDate) + ` [ ${transformed.log} ]`;
+        sDate = Date.now();
 
         if (transformed.error !== null) {
             return Promise.reject(transformed.error);
         }
 
         let asyncCommands = [];
+        let ctr = 0;
         transformed.payload.forEach((samples, partitionName) => {
             asyncCommands.push((async () => {
                 const redisClient = await this._partitionRedisConnectionResolver(partitionName);
                 const scoredSamples = Array.from(samples, kvp => kvp.reverse()).flatMap(kvp => kvp);
                 const serverTime = await redisClient.time();
+                ctr++;
                 return await redisClient.pipeline()
                     .zadd(this._assembleRedisKey(partitionName), ...scoredSamples)//Main partition
                     .zadd(this._assembleRedisKey(this._settings.ActivityKey), serverTime[0], partitionName)//Activity for partition
                     .zincrby(this._assembleRedisKey(this._settings.SamplesPerPartitionKey), (scoredSamples.length / 2), partitionName)//Sample count for partition
                     .incrby(this._assembleRedisKey(this._settings.InputRatePerf), (scoredSamples.length / 2))//Input rate for diagnostics.
                     .exec();
+
             })());
         });
 
         let results = await Promise.allSettled(asyncCommands);
+        log += " W.CO: " + ctr;
+        log += " W.R: " + (Date.now() - sDate);
+        sDate = Date.now();
         results.forEach(e => {
             if (e.status !== "fulfilled") {
                 throw new Error("Failed to complete operation:" + e.reason);
             }
         });
-
-        return true;
+        log += " W.F: " + (Date.now() - sDate);
+        sDate = Date.now();
+        return log;
     }
 
     async read(tagRanges) {
@@ -382,6 +393,7 @@ module.exports = class Timeseries {
     }
 
     async _validateTransformWriteParameters(tagTimeMap, requestId) {
+        let logPartitionCounter = 0, logTagIdCounter = 0, logSumPartiton = 0, logSumTag = 0;
         const returnObject = { "error": null, payload: new Map() };
         const errors = [];
         let sampleCounter = 0;
@@ -417,8 +429,14 @@ module.exports = class Timeseries {
                     }
                     sampleTime = BigInt(sampleTime);
                     const partitionStart = sampleTime - (sampleTime % this._settings.PartitionTimeWidth);
-                    const tagId = await this._tagNumericIdentityResolver(tagName);
-                    const partitionName = `${await this._tagPartitionResolver(tagName)}${this._settings.Seperator}${partitionStart}`;
+                    let sDate = Date.now();
+                    const tagId = await this._tagNumericIdentityResolver(tagName);//
+                    logSumTag += (Date.now() - sDate);
+                    logTagIdCounter++;
+                    sDate = Date.now();
+                    const partitionName = `${await this._tagPartitionResolver(tagName)}${this._settings.Seperator}${partitionStart}`;//
+                    logSumPartiton += (Date.now() - sDate);
+                    logPartitionCounter++;
                     if (partitionName === this._settings.ActivityKey) {
                         returnObject.error = `Conflicting partition name with Reserved Key for "Activity" (${partitionName}).`;
                         return returnObject;
@@ -467,6 +485,7 @@ module.exports = class Timeseries {
             return returnObject;
         }
 
+        returnObject.log = `c:${logPartitionCounter} avg:${(logSumPartiton / logPartitionCounter).toFixed(0)} c:${logTagIdCounter} avg:${(logSumTag / logTagIdCounter).toFixed(0)}`;
         return returnObject;
     }
 
