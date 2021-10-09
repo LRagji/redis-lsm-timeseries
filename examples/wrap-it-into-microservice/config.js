@@ -3,11 +3,16 @@ const scripto = require('redis-scripto2');
 const path = require('path');
 const identityCache = new Map();
 const partitionsKey = "Partitions";
+const clientsPerShard = 3;
 let stores = [
     //{ "hot": "redis://127.0.0.1:6379/", "cold": "/raw-db/" },
     //{ "hot": "redis://127.0.0.1:6379/", "cold": "postgres://postgres:@localhost:5432/Data" },
 ];
+
 const MaxTagsPerPartition = 2000;
+const buffer = new SharedArrayBuffer(8);
+const uint8 = new Uint8Array(buffer);
+uint8[0] = 0;
 
 async function hash(tagName, name = "Tags") {
     const inMemoryKey = `${name}${tagName}`;
@@ -51,7 +56,7 @@ async function clearPartitionIdentity(partitionName) {
 async function redisShard(partitionName) {
     const index = await hash(partitionName, partitionsKey) % shards.length;
     //console.log(`${partitionName} => ${index}`);
-    return shards[index].hot;
+    return shards[index].hot[(Atomics.add(uint8, 0, 1) % shards[index].hot.length)];
 }
 
 async function tagGrouping(tagName) {
@@ -60,11 +65,11 @@ async function tagGrouping(tagName) {
 }
 
 const hotStores = (process.env.hot || process.env.HOT).split(' ');
-const coldStores = (process.env.cold || process.env.COLD).split(' ');
+const coldStores = (process.env.cold || process.env.COLD || "").split(' ');
 const coordinator = new scripto(new redisType(process.env.coo || process.env.COO));
 coordinator.loadFromDir(path.join(__dirname, "lua"));
 stores = hotStores.map((h, idx) => ({ "hot": h, "cold": coldStores[idx] }));
-const shards = stores.map(storeInfo => ({ "hot": new redisType(storeInfo.hot), "cold": storeInfo.cold }));
+const shards = stores.map(storeInfo => ({ "hot": Array.from({ length: clientsPerShard }, _ => new redisType(storeInfo.hot)), "cold": storeInfo.cold }));
 // setInterval(() => {
 //     console.log("Internal Cache Size: " + identityCache.size);
 // }, 1000 * 60)

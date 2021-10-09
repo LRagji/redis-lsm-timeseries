@@ -16,7 +16,7 @@ async function mainPurgeLoop(storeInfo) {
     };
     Object.keys(signalsToAccept).forEach((signal) => {
         process.on(signal, () => {
-            console.log(`process received a ${signal} signal`);
+            console.log(`File-worker received a ${signal} signal`);
             shutdown = true;
         });
     });

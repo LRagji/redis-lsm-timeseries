@@ -4,31 +4,80 @@ services:
     image: "redis:latest"
   hot-shard1:
     image: "redis:latest"
-    # ports:
-    #   - "6380:6379"
   hot-shard2:
     image: "redis:latest"
-    # ports:
-    #   - "6381:6379"
-  timeseries:
-    image: "lragji/ts-v2.0"
+  hot-shard3:
+    image: "redis:latest"
+  # hot-shard4:
+  #   image: "redis:latest"
+  # hot-shard5:
+  #   image: "redis:latest"
+  timeseries_1:
+    build:
+      context: ../
+      dockerfile: Dockerfile
     environment:
       - coo=redis://coordinator:6379/
-      - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/
-      - cold=/raw-db/ /raw-db/
-      - mode=FILE
-    depends_on: 
+      - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/ redis://hot-shard3:6379/
+      # - cold=/raw-db/ /raw-db/
+    depends_on:
+      - "coordinator" 
       - "hot-shard1"
-      # - "hot-shard2"
-    # ports:
-    #   - "80:3000"
+      - "hot-shard2"
+      # - "hot-shard3"
+      # - "hot-shard4"
+      # - "hot-shard5"
     volumes:
       - ./raw-db/:/usr/src/app/examples/wrap-it-into-microservice/raw-db/
+  timeseries_2:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    environment:
+      - coo=redis://coordinator:6379/
+      - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/ redis://hot-shard3:6379/
+      # - cold=/raw-db/ /raw-db/
+    depends_on:
+      - "coordinator" 
+      - "hot-shard1"
+      - "hot-shard2"
+      # - "hot-shard3"
+      # - "hot-shard4"
+      # - "hot-shard5"
+    volumes:
+      - ./raw-db/:/usr/src/app/examples/wrap-it-into-microservice/raw-db/
+  timeseries_3:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    environment:
+      - coo=redis://coordinator:6379/
+      - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/ redis://hot-shard3:6379/
+      # - cold=/raw-db/ /raw-db/
+    depends_on:
+      - "coordinator" 
+      - "hot-shard1"
+      - "hot-shard2"
+      # - "hot-shard3"
+      # - "hot-shard4"
+      # - "hot-shard5"
+    volumes:
+      - ./raw-db/:/usr/src/app/examples/wrap-it-into-microservice/raw-db/
+  loadbalancer:
+    build:
+      context: nginx
+      dockerfile: docker
+    logging:
+      driver: none
+    depends_on:
+      - "timeseries_1"
+      - "timeseries_2"
+      # - "timeseries_3"
   jmeter:
     image: "justb4/jmeter:latest"
     container_name: jmeter
     depends_on: 
-      - "timeseries"
+      - "loadbalancer"
     volumes:
       - ./:/app
     working_dir: /app
@@ -41,7 +90,7 @@ services:
       - "-f" 
       - "-e" 
       - "-o /app/results"
-      - "-JTARGET_HOST=timeseries"
+      - "-JTARGET_HOST=loadbalancer"
       - "-JTARGET_PORT=3000"
   # cold-shard1:
   #   image: postgres:11.4
