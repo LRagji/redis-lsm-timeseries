@@ -24,7 +24,7 @@ services:
       - "coordinator" 
       - "hot-shard1"
       - "hot-shard2"
-      # - "hot-shard3"
+      - "hot-shard3"
       # - "hot-shard4"
       # - "hot-shard5"
     volumes:
@@ -41,7 +41,7 @@ services:
       - "coordinator" 
       - "hot-shard1"
       - "hot-shard2"
-      # - "hot-shard3"
+      - "hot-shard3"
       # - "hot-shard4"
       # - "hot-shard5"
     volumes:
@@ -58,11 +58,28 @@ services:
       - "coordinator" 
       - "hot-shard1"
       - "hot-shard2"
-      # - "hot-shard3"
+      - "hot-shard3"
       # - "hot-shard4"
       # - "hot-shard5"
     volumes:
       - ./raw-db/:/usr/src/app/examples/wrap-it-into-microservice/raw-db/
+  # timeseries_4:
+  #   build:
+  #     context: ../
+  #     dockerfile: Dockerfile
+  #   environment:
+  #     - coo=redis://coordinator:6379/
+  #     - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/ redis://hot-shard3:6379/ redis://hot-shard4:6379/
+  #     # - cold=/raw-db/ /raw-db/
+  #   depends_on:
+  #     - "coordinator" 
+  #     - "hot-shard1"
+  #     - "hot-shard2"
+  #     - "hot-shard3"
+  #     - "hot-shard4"
+  #     # - "hot-shard5"
+  #   volumes:
+  #     - ./raw-db/:/usr/src/app/examples/wrap-it-into-microservice/raw-db/
   loadbalancer:
     build:
       context: nginx
@@ -72,7 +89,8 @@ services:
     depends_on:
       - "timeseries_1"
       - "timeseries_2"
-      # - "timeseries_3"
+      - "timeseries_3"
+      # - "timeseries_4"
   jmeter:
     image: "justb4/jmeter:latest"
     container_name: jmeter
