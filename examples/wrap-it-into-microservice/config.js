@@ -17,26 +17,40 @@ const cordinatorBuffer = new SharedArrayBuffer(8);
 const cordinatorCounter = new Uint8Array(cordinatorBuffer);
 cordinatorCounter[0] = 0;
 
-async function hash(tagName, name = "Tags") {
-    const inMemoryKey = `${name}${tagName}`;
-    const existingId = identityCache.get(inMemoryKey);
-    if (existingId == null) {
-        const hash = await new Promise((acc, rej) => {
-            coordinators[sequentialCount(cordinatorCounter, coordinators.length)].run("identity", [name, name + "Ctr"], [tagName], (err, result) => {
+function getInmemoryKey(lastName, firstName) {
+    return `${lastName}${firstName}`;
+}
+
+async function hash(tagNames, createIfNotFound = true, name = "Tags") {
+    let returnMap = new Map();
+    const redisQueryTagNames = [];
+    tagNames.forEach((tagName) => {
+        const inMemoryKey = getInmemoryKey(name, tagName);
+        const existingId = identityCache.get(inMemoryKey);
+        if (existingId == null) {
+            redisQueryTagNames.push(tagName);
+        }
+        else {
+            returnMap.set(tagName, existingId);
+        }
+    });
+    //console.log(`Hit Ratio: ${(((returnMap.size / tagNames.length)) * 100).toFixed(0)}`);
+    if (redisQueryTagNames.length > 0) {
+        const queryResults = await new Promise((acc, rej) => {
+            coordinators[sequentialCount(cordinatorCounter, coordinators.length)].run("identity", [name, name + "Ctr"], [(createIfNotFound === true ? 1 : 0), ...redisQueryTagNames], (err, result) => {
                 if (err !== null) {
                     return rej(err);
                 }
                 acc(result);
             });
         });
-        // console.log(`${name}: ${tagName} => ${hash}`);
-        identityCache.set(inMemoryKey, parseInt(hash));
-        return identityCache.get(inMemoryKey);
+        queryResults.forEach(nameToId => {
+            //console.log(`${nameToId[0]} ${parseInt(nameToId[1])}`);
+            identityCache.set(getInmemoryKey(name, nameToId[0]), parseInt(nameToId[1]));
+            returnMap.set(nameToId[0], parseInt(nameToId[1]));
+        });
     }
-    else {
-        return existingId;
-    }
-    //return Array.from(tagName).reduce((acc, c) => acc + c.charCodeAt(0), 0);
+    return returnMap;
 }
 
 async function clearPartitionIdentity(partitionName) {
@@ -56,14 +70,16 @@ async function clearPartitionIdentity(partitionName) {
     return response === 1;
 }
 
-async function redisShard(partitionName) {
-    const index = await hash(partitionName, partitionsKey) % shards.length;
+async function redisShard(partitionName, createIfNotFound) {
+    const results = await hash([partitionName], createIfNotFound, partitionsKey);
+    const index = results.get(partitionName) % shards.length;
     //console.log(`${partitionName} => ${index}`);
     return shards[index].hot[sequentialCount(shardCounter, shards[index].hot.length)];
 }
 
-async function tagGrouping(tagName) {
-    const tagId = await hash(tagName);
+async function tagGrouping(tagName, createIfNotFound) {
+    const results = await hash([tagName], createIfNotFound);
+    const tagId = results.get(tagName);
     return tagId - (tagId % MaxTagsPerPartition);
 }
 

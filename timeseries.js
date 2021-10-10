@@ -11,7 +11,7 @@ module.exports = class Timeseries {
 
     instanceHash
 
-    constructor(tagPartitionResolver, partitionRedisConnectionResolver, tagNumericIdentityResolver,
+    constructor(tagPartitionResolver, partitionRedisConnectionResolver, tagsNumericIdentityResolver,
         settings = {
             "ActivityKey": "Activity",
             "SamplesPerPartitionKey": "Stats",
@@ -35,8 +35,8 @@ module.exports = class Timeseries {
         if ({}.toString.call(partitionRedisConnectionResolver) !== '[object AsyncFunction]') {
             throw new Error(`Invalid parameter "partitionRedisConnectionResolver" should be a async function, but is ${{}.toString.call(partitionRedisConnectionResolver)}`);
         }
-        if ({}.toString.call(tagNumericIdentityResolver) !== '[object AsyncFunction]') {
-            throw new Error(`Invalid parameter "tagNumericIdentityResolver" should be a async function, but is ${{}.toString.call(tagNumericIdentityResolver)}`);
+        if ({}.toString.call(tagsNumericIdentityResolver) !== '[object AsyncFunction]') {
+            throw new Error(`Invalid parameter "tagsNumericIdentityResolver" should be a async function, but is ${{}.toString.call(tagsNumericIdentityResolver)}`);
         }
         if (settings.ActivityKey === settings.SamplesPerPartitionKey) {
             throw new Error(`Invalid settings "ActivityKey" & "SamplesPerPartitionKey" cannot be same.`);
@@ -56,19 +56,27 @@ module.exports = class Timeseries {
 
         this._tagPartitionResolver = tagPartitionResolver;
         this._partitionRedisConnectionResolver = partitionRedisConnectionResolver;
-        this._tagNumericIdentityResolver = async tagName => {
+        this._tagsNumericIdentityResolver = async (tagNames, createIdentity) => {
             const redisMaximumScore = 9007199254740992n// Maximum score:https://redis.io/commands/ZADD
             const maxLimit = (redisMaximumScore / settings.PartitionTimeWidth);
-            const tagId = BigInt(await tagNumericIdentityResolver(tagName));
+            const tagIds = await tagsNumericIdentityResolver(tagNames, createIdentity);
+            let validatingArray = Array.from(tagNames);
+            tagIds.forEach((tagId, tagName) => {
+                tagId = BigInt(tagId);
+                if (tagId < 1n) {
+                    throw new Error(`Tag ${tagName} numeric id's cannot be less than 1.`);
+                }
 
-            if (tagId < 1n) {
-                throw new Error("Tag numeric id's cannot be less than 1.");
+                if (tagId > maxLimit) {
+                    throw new Error(`Tag ${tagName} numeric id's cannot be greater than ${maxLimit}.`);
+                }
+                tagIds.set(tagName, tagId);
+                validatingArray = validatingArray.filter(tN => tN !== tagName);
+            })
+            if (validatingArray.length > 0 && createIdentity === true) {
+                throw new Error(`Requested identities(${tagNames.length}) doesnt not match fetched count(${tagIds.size}), ${validatingArray.join(',')}.`);
             }
-
-            if (tagId > maxLimit) {
-                throw new Error(`Tag numeric id's cannot be greater than ${maxLimit}.`);
-            }
-            return tagId;
+            return tagIds;
         }
 
         this._settings = settings;
@@ -115,7 +123,7 @@ module.exports = class Timeseries {
         let ctr = 0;
         transformed.payload.forEach((samples, partitionName) => {
             asyncCommands.push((async () => {
-                const redisClient = await this._partitionRedisConnectionResolver(partitionName);
+                const redisClient = await this._partitionRedisConnectionResolver(partitionName, true);
                 const scoredSamples = Array.from(samples, kvp => kvp.reverse()).flatMap(kvp => kvp);
                 const serverTime = await redisClient.time();
                 ctr++;
@@ -155,7 +163,7 @@ module.exports = class Timeseries {
         for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
             const partitionName = keys[keyIndex];
             const ranges = transformed.ranges.get(partitionName);
-            const redisClient = await this._partitionRedisConnectionResolver(partitionName);
+            const redisClient = await this._partitionRedisConnectionResolver(partitionName, false);
             const purgedPartitionName = `${partitionName}${this._settings.Seperator}${this._settings.PurgeMarker}`;
             asyncCommands = asyncCommands.concat(ranges.map(async range => {
                 const multiResponse = await redisClient.pipeline()
@@ -331,6 +339,7 @@ module.exports = class Timeseries {
 
         const errors = [];
         const keys = Array.from(tagRanges.keys());
+        const tagNameToIdMapping = await this._tagsNumericIdentityResolver(keys, false);
         for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
             const tagName = keys[keyIndex];
             const range = tagRanges.get(tagName);
@@ -358,10 +367,10 @@ module.exports = class Timeseries {
                 errors.push(`Invalid range; start should be smaller than end for ${tagName}.`);
                 return;
             }
-            const tagId = await this._tagNumericIdentityResolver(tagName);
+            const tagId = tagNameToIdMapping.get(tagName);
             const tagOffset = this._computeTagSpaceStart(tagId);
             while (start < end) {
-                const partitionName = `${await this._tagPartitionResolver(tagName)}${this._settings.Seperator}${start}`;
+                const partitionName = `${await this._tagPartitionResolver(tagName, false)}${this._settings.Seperator}${start}`;
                 let readFrom = this._maximum(start, BigInt(range.start));
                 let readTill = this._minimum((start + (this._settings.PartitionTimeWidth - 1n)), end)
                 readFrom = readFrom === 0n ? readFrom : readFrom - start;
@@ -409,6 +418,10 @@ module.exports = class Timeseries {
             return returnObject;
         }
         const tagKeys = Array.from(tagTimeMap.keys());
+        let sDate = Date.now();
+        const tagNameToIdMapping = await this._tagsNumericIdentityResolver(tagKeys, true);
+        logSumTag += (Date.now() - sDate);
+        logTagIdCounter++;
         for (let tagKeyIndex = 0; tagKeyIndex < tagKeys.length; tagKeyIndex++) {
             const tagName = tagKeys[tagKeyIndex];
             const timeDataMap = tagTimeMap.get(tagName);
@@ -429,12 +442,9 @@ module.exports = class Timeseries {
                     }
                     sampleTime = BigInt(sampleTime);
                     const partitionStart = sampleTime - (sampleTime % this._settings.PartitionTimeWidth);
-                    let sDate = Date.now();
-                    const tagId = await this._tagNumericIdentityResolver(tagName);//
-                    logSumTag += (Date.now() - sDate);
-                    logTagIdCounter++;
+                    const tagId = tagNameToIdMapping.get(tagName);
                     sDate = Date.now();
-                    const partitionName = `${await this._tagPartitionResolver(tagName)}${this._settings.Seperator}${partitionStart}`;//
+                    const partitionName = `${await this._tagPartitionResolver(tagName, true)}${this._settings.Seperator}${partitionStart}`;//
                     logSumPartiton += (Date.now() - sDate);
                     logPartitionCounter++;
                     if (partitionName === this._settings.ActivityKey) {
