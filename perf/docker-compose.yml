@@ -2,12 +2,21 @@ version: '3.8'
 services:
   coordinator:
     image: "redis:latest"
+    command: redis-server --include /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
   hot-shard1:
     image: "redis:latest"
+    command: redis-server --include /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
   hot-shard2:
     image: "redis:latest"
-  hot-shard3:
-    image: "redis:latest"
+    command: redis-server --include /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+  # hot-shard3:
+  #   image: "redis:latest"
   # hot-shard4:
   #   image: "redis:latest"
   # hot-shard5:
@@ -18,13 +27,17 @@ services:
       dockerfile: Dockerfile
     environment:
       - coo=redis://coordinator:6379/
-      - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/ redis://hot-shard3:6379/
+      - clients=5
+      - root=0
+      # - hot=redis://hot-shard1:6379/
+      - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/
+      # - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/ redis://hot-shard3:6379/
       # - cold=/raw-db/ /raw-db/
     depends_on:
       - "coordinator" 
       - "hot-shard1"
       - "hot-shard2"
-      - "hot-shard3"
+      # - "hot-shard3"
       # - "hot-shard4"
       # - "hot-shard5"
     volumes:
@@ -35,13 +48,17 @@ services:
       dockerfile: Dockerfile
     environment:
       - coo=redis://coordinator:6379/
-      - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/ redis://hot-shard3:6379/
+      - clients=5
+      - root=32000
+      # - hot=redis://hot-shard1:6379/
+      - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/
+      # - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/ redis://hot-shard3:6379/
       # - cold=/raw-db/ /raw-db/
     depends_on:
       - "coordinator" 
       - "hot-shard1"
       - "hot-shard2"
-      - "hot-shard3"
+      # - "hot-shard3"
       # - "hot-shard4"
       # - "hot-shard5"
     volumes:
@@ -52,31 +69,123 @@ services:
       dockerfile: Dockerfile
     environment:
       - coo=redis://coordinator:6379/
-      - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/ redis://hot-shard3:6379/
+      - clients=5
+      - root=48000
+      # - hot=redis://hot-shard1:6379/
+      - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/
+      # - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/ redis://hot-shard3:6379/
       # - cold=/raw-db/ /raw-db/
     depends_on:
       - "coordinator" 
       - "hot-shard1"
       - "hot-shard2"
-      - "hot-shard3"
+      # - "hot-shard3"
       # - "hot-shard4"
       # - "hot-shard5"
     volumes:
       - ./raw-db/:/usr/src/app/examples/wrap-it-into-microservice/raw-db/
-  # timeseries_4:
+  timeseries_4:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    environment:
+      - coo=redis://coordinator:6379/
+      - clients=5
+      - root=64000
+      # - hot=redis://hot-shard1:6379/
+      - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/
+      # - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/ redis://hot-shard3:6379/
+      # - cold=/raw-db/ /raw-db/
+    depends_on:
+      - "coordinator" 
+      - "hot-shard1"
+      - "hot-shard2"
+      # - "hot-shard3"
+      # - "hot-shard4"
+      # - "hot-shard5"
+    volumes:
+      - ./raw-db/:/usr/src/app/examples/wrap-it-into-microservice/raw-db/
+  # timeseries_5:
   #   build:
   #     context: ../
   #     dockerfile: Dockerfile
   #   environment:
   #     - coo=redis://coordinator:6379/
-  #     - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/ redis://hot-shard3:6379/ redis://hot-shard4:6379/
+  #     - clients=10
+  #     - root=80000
+  #     # - hot=redis://hot-shard1:6379/
+  #     # - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/
+  #     - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/ redis://hot-shard3:6379/
   #     # - cold=/raw-db/ /raw-db/
   #   depends_on:
   #     - "coordinator" 
   #     - "hot-shard1"
   #     - "hot-shard2"
   #     - "hot-shard3"
-  #     - "hot-shard4"
+  #     # - "hot-shard4"
+  #     # - "hot-shard5"
+  #   volumes:
+  #     - ./raw-db/:/usr/src/app/examples/wrap-it-into-microservice/raw-db/
+  # timeseries_6:
+  #   build:
+  #     context: ../
+  #     dockerfile: Dockerfile
+  #   environment:
+  #     - coo=redis://coordinator:6379/
+  #     - clients=10
+  #     - root=96000
+  #     # - hot=redis://hot-shard1:6379/
+  #     # - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/
+  #     - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/ redis://hot-shard3:6379/
+  #     # - cold=/raw-db/ /raw-db/
+  #   depends_on:
+  #     - "coordinator" 
+  #     - "hot-shard1"
+  #     - "hot-shard2"
+  #     - "hot-shard3"
+  #     # - "hot-shard4"
+  #     # - "hot-shard5"
+  #   volumes:
+  #     - ./raw-db/:/usr/src/app/examples/wrap-it-into-microservice/raw-db/
+  # timeseries_7:
+  #   build:
+  #     context: ../
+  #     dockerfile: Dockerfile
+  #   environment:
+  #     - coo=redis://coordinator:6379/
+  #     - clients=10
+  #     - root=112000
+  #     # - hot=redis://hot-shard1:6379/
+  #     # - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/
+  #     - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/ redis://hot-shard3:6379/
+  #     # - cold=/raw-db/ /raw-db/
+  #   depends_on:
+  #     - "coordinator" 
+  #     - "hot-shard1"
+  #     - "hot-shard2"
+  #     - "hot-shard3"
+  #     # - "hot-shard4"
+  #     # - "hot-shard5"
+  #   volumes:
+  #     - ./raw-db/:/usr/src/app/examples/wrap-it-into-microservice/raw-db/
+  # timeseries_8:
+  #   build:
+  #     context: ../
+  #     dockerfile: Dockerfile
+  #   environment:
+  #     - coo=redis://coordinator:6379/
+  #     - clients=10
+  #     - root=128000
+  #     # - hot=redis://hot-shard1:6379/
+  #     # - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/
+  #     - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/ redis://hot-shard3:6379/
+  #     # - cold=/raw-db/ /raw-db/
+  #   depends_on:
+  #     - "coordinator" 
+  #     - "hot-shard1"
+  #     - "hot-shard2"
+  #     - "hot-shard3"
+  #     # - "hot-shard4"
   #     # - "hot-shard5"
   #   volumes:
   #     - ./raw-db/:/usr/src/app/examples/wrap-it-into-microservice/raw-db/

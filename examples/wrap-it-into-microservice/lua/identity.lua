@@ -14,4 +14,8 @@ for index = 2, #ARGV do
     table.insert(acquiredIdentities,{HashInput,HashValue})
 end
 
+-- local readall = redis.call("HGETALL",Key)
+-- for index = 1, (#readall/2), 2 do
+--     table.insert(acquiredIdentities,{readall[index],readall[index+1]})
+-- end
 return acquiredIdentities

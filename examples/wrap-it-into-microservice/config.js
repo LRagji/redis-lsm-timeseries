@@ -3,7 +3,7 @@ const scripto = require('redis-scripto2');
 const path = require('path');
 const identityCache = new Map();
 const partitionsKey = "Partitions";
-const clientsPerShard = 3;
+const clientsPerShard = parseInt(process.env.clients || process.env.CLIENTS || 3);
 let stores = [
     //{ "hot": "redis://127.0.0.1:6379/", "cold": "/raw-db/" },
     //{ "hot": "redis://127.0.0.1:6379/", "cold": "postgres://postgres:@localhost:5432/Data" },
@@ -16,6 +16,9 @@ shardCounter[0] = 0;
 const cordinatorBuffer = new SharedArrayBuffer(8);
 const cordinatorCounter = new Uint8Array(cordinatorBuffer);
 cordinatorCounter[0] = 0;
+// const idBuffer = new SharedArrayBuffer(16);
+// const idCounter = new Uint32Array(idBuffer);
+// idCounter[0] = parseInt(process.env.root || process.env.ROOT);
 
 function getInmemoryKey(lastName, firstName) {
     return `${lastName}${firstName}`;
@@ -45,10 +48,14 @@ async function hash(tagNames, createIfNotFound = true, name = "Tags") {
             });
         });
         queryResults.forEach(nameToId => {
-            //console.log(`${nameToId[0]} ${parseInt(nameToId[1])}`);
             identityCache.set(getInmemoryKey(name, nameToId[0]), parseInt(nameToId[1]));
             returnMap.set(nameToId[0], parseInt(nameToId[1]));
         });
+        // redisQueryTagNames.forEach(tName => {
+        //     let tId = Atomics.add(idCounter, 0, 1);
+        //     identityCache.set(getInmemoryKey(name, tName), tId);
+        //     returnMap.set(tName, tId);
+        // });
     }
     return returnMap;
 }
@@ -90,7 +97,7 @@ function sequentialCount(memory, maxcount) {
 const hotStores = (process.env.hot || process.env.HOT).split(' ');
 const coldStores = (process.env.cold || process.env.COLD || "").split(' ');
 const coordinatorConnection = process.env.coo || process.env.COO;
-const coordinators = Array.from({ length: clientsPerShard }, _ => {
+const coordinators = Array.from({ length: (clientsPerShard * 2) }, _ => {
     const scriptManager = new scripto(new redisType(coordinatorConnection));
     scriptManager.loadFromDir(path.join(__dirname, "lua"));
     return scriptManager;
