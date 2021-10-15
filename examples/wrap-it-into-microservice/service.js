@@ -41,6 +41,7 @@ app.post('/set', async (req, res) => {
         }
     }
     catch (err) {
+        console.log(err);
         res.status(500).json(err.stack);
     }
     if (Date.now() - logOrNot > 5000) {

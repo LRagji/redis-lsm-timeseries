@@ -48,14 +48,17 @@ async function hash(tagNames, createIfNotFound = true, name = "Tags") {
             });
         });
         queryResults.forEach(nameToId => {
-            identityCache.set(getInmemoryKey(name, nameToId[0]), parseInt(nameToId[1]));
-            returnMap.set(nameToId[0], parseInt(nameToId[1]));
+            const identity = parseInt(nameToId[1]);
+            const item = nameToId[0];
+            if (createIfNotFound === true && Number.isNaN(identity)) {
+                throw new Error(`Identity creation failed for ${item}.`);
+            }
+            else if (!Number.isNaN(identity)) {
+                //Donot dirty the internal cache when createIfNotFound is set to false.(it can have nulls)
+                identityCache.set(getInmemoryKey(name, item), identity);
+            }
+            returnMap.set(item, identity);
         });
-        // redisQueryTagNames.forEach(tName => {
-        //     let tId = Atomics.add(idCounter, 0, 1);
-        //     identityCache.set(getInmemoryKey(name, tName), tId);
-        //     returnMap.set(tName, tId);
-        // });
     }
     return returnMap;
 }
@@ -79,15 +82,32 @@ async function clearPartitionIdentity(partitionName) {
 
 async function redisShard(partitionName, createIfNotFound) {
     const results = await hash([partitionName], createIfNotFound, partitionsKey);
-    const index = results.get(partitionName) % shards.length;
+    const partitionId = results.get(partitionName);
     //console.log(`${partitionName} => ${index}`);
-    return shards[index].hot[sequentialCount(shardCounter, shards[index].hot.length)];
+    if (Number.isNaN(partitionId) && createIfNotFound === true) {
+        throw new Error(`Invalid Identity when new identity is requested for ${partitionId}.`);
+    }
+    else if (Number.isNaN(partitionId) && createIfNotFound === false) {
+        return null;
+    }
+    else {
+        const index = partitionId % shards.length;
+        return shards[index].hot[sequentialCount(shardCounter, shards[index].hot.length)];
+    }
 }
 
 async function tagGrouping(tagName, createIfNotFound) {
     const results = await hash([tagName], createIfNotFound);
     const tagId = results.get(tagName);
-    return tagId - (tagId % MaxTagsPerPartition);
+    if (Number.isNaN(tagId) && createIfNotFound === true) {
+        throw new Error(`Invalid Identity when new identity is requested for ${tagId}.`);
+    }
+    else if (Number.isNaN(tagId) && createIfNotFound === false) {
+        return null;
+    }
+    else {
+        return tagId - (tagId % MaxTagsPerPartition);
+    }
 }
 
 function sequentialCount(memory, maxcount) {

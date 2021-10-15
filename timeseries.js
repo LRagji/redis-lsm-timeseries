@@ -62,13 +62,15 @@ module.exports = class Timeseries {
             const tagIds = await tagsNumericIdentityResolver(tagNames, createIdentity);
             let validatingArray = Array.from(tagNames);
             tagIds.forEach((tagId, tagName) => {
-                tagId = BigInt(tagId);
-                if (tagId < 1n) {
-                    throw new Error(`Tag ${tagName} numeric id's cannot be less than 1.`);
-                }
+                if (!Number.isNaN(tagId)) {
+                    tagId = BigInt(tagId);
+                    if (tagId < 1n) {
+                        throw new Error(`Tag ${tagName} numeric id's cannot be less than 1.`);
+                    }
 
-                if (tagId > maxLimit) {
-                    throw new Error(`Tag ${tagName} numeric id's cannot be greater than ${maxLimit}.`);
+                    if (tagId > maxLimit) {
+                        throw new Error(`Tag ${tagName} numeric id's cannot be greater than ${maxLimit}.`);
+                    }
                 }
                 tagIds.set(tagName, tagId);
                 validatingArray = validatingArray.filter(tN => tN !== tagName);
@@ -164,15 +166,18 @@ module.exports = class Timeseries {
             const partitionName = keys[keyIndex];
             const ranges = transformed.ranges.get(partitionName);
             const redisClient = await this._partitionRedisConnectionResolver(partitionName, false);
-            const purgedPartitionName = `${partitionName}${this._settings.Seperator}${this._settings.PurgeMarker}`;
-            asyncCommands = asyncCommands.concat(ranges.map(async range => {
-                const multiResponse = await redisClient.pipeline()
-                    .zrangebyscore(this._assembleRedisKey(purgedPartitionName), range.start, range.end, WITHSCORES) //Purging partition Query
-                    .zrangebyscore(this._assembleRedisKey(partitionName), range.start, range.end, WITHSCORES) //Active partition Query
-                    .exec();
-                range.response = multiResponse.reduce((accum, e) => accum[1].concat(e[1]));//Sequence matters cause of time sorted keys.
-                return range;
-            }));
+            if (!redisClient == null) //Null can occur when partition is not created yet or has been dropped.
+            {
+                const purgedPartitionName = `${partitionName}${this._settings.Seperator}${this._settings.PurgeMarker}`;
+                asyncCommands = asyncCommands.concat(ranges.map(async range => {
+                    const multiResponse = await redisClient.pipeline()
+                        .zrangebyscore(this._assembleRedisKey(purgedPartitionName), range.start, range.end, WITHSCORES) //Purging partition Query
+                        .zrangebyscore(this._assembleRedisKey(partitionName), range.start, range.end, WITHSCORES) //Active partition Query
+                        .exec();
+                    range.response = multiResponse.reduce((accum, e) => accum[1].concat(e[1]));//Sequence matters cause of time sorted keys.
+                    return range;
+                }));
+            }
         };
 
         let results = await Promise.allSettled(asyncCommands);
@@ -350,27 +355,36 @@ module.exports = class Timeseries {
             }
             catch (error) {
                 errors.push(`Invalid start range for ${tagName}: ${error.message}`);
-                return;
+                continue;
             };
             try {
                 end = BigInt(range.end);
             }
             catch (error) {
                 errors.push(`Invalid end range for ${tagName}: ${error.message}`);
-                return;
+                continue;
             };
             if (tagName.length > this._settings.MaximumTagNameLength) {
                 errors.push(`Tag "${tagName}" has name which extends character limit(${this._settings.MaximumTagNameLength}).`);
-                return;
+                continue;
             }
             if (range.end < range.start) {
                 errors.push(`Invalid range; start should be smaller than end for ${tagName}.`);
-                return;
+                continue;
             }
             const tagId = tagNameToIdMapping.get(tagName);
+            if (Number.isNaN(tagId)) {
+                errors.push(`Tag(${tagName}) doesnot exists.`);
+                continue;
+            }
             const tagOffset = this._computeTagSpaceStart(tagId);
             while (start < end) {
-                const partitionName = `${await this._tagPartitionResolver(tagName, false)}${this._settings.Seperator}${start}`;
+                const pName = await this._tagPartitionResolver(tagName, false);
+                if (pName == null) {
+                    //We are trying to fetch a partition still not created.
+                    continue;
+                }
+                const partitionName = `${pName}${this._settings.Seperator}${start}`;
                 let readFrom = this._maximum(start, BigInt(range.start));
                 let readTill = this._minimum((start + (this._settings.PartitionTimeWidth - 1n)), end)
                 readFrom = readFrom === 0n ? readFrom : readFrom - start;
