@@ -62,7 +62,7 @@ module.exports = class Timeseries {
             const tagIds = await tagsNumericIdentityResolver(tagNames, createIdentity);
             let validatingArray = Array.from(tagNames);
             tagIds.forEach((tagId, tagName) => {
-                if (!Number.isNaN(tagId)) {
+                if (!(Number.isNaN(tagId))) {
                     tagId = BigInt(tagId);
                     if (tagId < 1n) {
                         throw new Error(`Tag ${tagName} numeric id's cannot be less than 1.`);
@@ -166,7 +166,7 @@ module.exports = class Timeseries {
             const partitionName = keys[keyIndex];
             const ranges = transformed.ranges.get(partitionName);
             const redisClient = await this._partitionRedisConnectionResolver(partitionName, false);
-            if (!redisClient == null) //Null can occur when partition is not created yet or has been dropped.
+            if (!(redisClient == null)) //Null can occur when partition is not created yet or has been dropped.
             {
                 const purgedPartitionName = `${partitionName}${this._settings.Seperator}${this._settings.PurgeMarker}`;
                 asyncCommands = asyncCommands.concat(ranges.map(async range => {
