@@ -5,4 +5,4 @@ jmeter.log
 jmeter.jtl
 /perf/results
 raw-db
-**/**.log
+*.log
