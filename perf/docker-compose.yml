@@ -28,11 +28,11 @@ services:
     environment:
       - coo=redis://coordinator:6379/
       - clients=5
-      - root=0
+      - mode=FILE
       # - hot=redis://hot-shard1:6379/
       - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/
       # - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/ redis://hot-shard3:6379/
-      # - cold=/raw-db/ /raw-db/
+      - cold=/raw-db/ /raw-db/
     depends_on:
       - "coordinator" 
       - "hot-shard1"
@@ -49,11 +49,11 @@ services:
     environment:
       - coo=redis://coordinator:6379/
       - clients=5
-      - root=32000
+      - mode=FILE
       # - hot=redis://hot-shard1:6379/
       - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/
       # - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/ redis://hot-shard3:6379/
-      # - cold=/raw-db/ /raw-db/
+      - cold=/raw-db/ /raw-db/
     depends_on:
       - "coordinator" 
       - "hot-shard1"
@@ -70,11 +70,11 @@ services:
     environment:
       - coo=redis://coordinator:6379/
       - clients=5
-      - root=48000
+      - mode=FILE
       # - hot=redis://hot-shard1:6379/
       - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/
       # - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/ redis://hot-shard3:6379/
-      # - cold=/raw-db/ /raw-db/
+      - cold=/raw-db/ /raw-db/
     depends_on:
       - "coordinator" 
       - "hot-shard1"
@@ -91,11 +91,11 @@ services:
     environment:
       - coo=redis://coordinator:6379/
       - clients=5
-      - root=64000
+      - mode=FILE
       # - hot=redis://hot-shard1:6379/
       - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/
       # - hot=redis://hot-shard1:6379/ redis://hot-shard2:6379/ redis://hot-shard3:6379/
-      # - cold=/raw-db/ /raw-db/
+      - cold=/raw-db/ /raw-db/
     depends_on:
       - "coordinator" 
       - "hot-shard1"
@@ -193,13 +193,15 @@ services:
     build:
       context: nginx
       dockerfile: docker
+    ports:
+      - "3001:3000"
     logging:
       driver: none
     depends_on:
       - "timeseries_1"
       - "timeseries_2"
       - "timeseries_3"
-      # - "timeseries_4"
+      - "timeseries_4"
   jmeter:
     image: "justb4/jmeter:latest"
     container_name: jmeter

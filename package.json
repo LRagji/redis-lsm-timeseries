@@ -7,7 +7,7 @@
     "mocha": " nyc --reporter=html --reporter=text mocha",
     "test": "npm run redisstart && npm run mocha",
     "perf-build": "docker-compose -f perf/docker-compose.yml build",
-    "perf": "docker-compose -f perf/docker-compose.yml up --abort-on-container-exit --exit-code-from jmeter && docker-compose -f perf/docker-compose.yml rm -f",
+    "perf": "docker-compose -f perf/docker-compose.yml up",
     "perfaws": "docker --context aws-cloud compose -f perf/docker-compose-aws.yml up && docker --context aws-cloud compose -f perf/docker-compose-aws.yml logs --follow",
     "jmeter": "run-script-os",
     "redisstop": "docker stop streamz",

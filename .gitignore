@@ -6,3 +6,5 @@ jmeter.jtl
 /perf/results
 raw-db
 *.log
+# Redis insight logs
+*.log.*  
