@@ -8,3 +8,4 @@ raw-db
 *.log
 # Redis insight logs
 *.log.*  
+.DS_Store
