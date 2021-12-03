@@ -1,8 +1,6 @@
 const Crypto = require("crypto");
 const path = require("path");
 const pssfns = require("purgeable-sorted-set-family");
-const NDimensionPartType = pssfns.NDimensionalPartitionedSortedSet;
-
 
 //Domain constants
 const WITHSCORES = "WITHSCORES";
