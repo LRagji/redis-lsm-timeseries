@@ -1,5 +1,8 @@
 const Crypto = require("crypto");
 const path = require("path");
+const pssfns = require("purgeable-sorted-set-family");
+const NDimensionPartType = pssfns.NDimensionalPartitionedSortedSet;
+
 
 //Domain constants
 const WITHSCORES = "WITHSCORES";
@@ -53,6 +56,9 @@ module.exports = class Timeseries {
         catch (err) {
             throw new Error("Parameter 'settings.PartitionTimeWidth' is invalid: " + err.message);
         }
+
+        this._shard = new pssfns.LocalPSSF();
+        this._NDPart = new pssfns.NDimensionalPartitionedSortedSet([100n, 100n], _ => this._shard);
 
         this._tagPartitionResolver = tagPartitionResolver;
         this._partitionRedisConnectionResolver = partitionRedisConnectionResolver;
@@ -121,33 +127,14 @@ module.exports = class Timeseries {
             return Promise.reject(transformed.error);
         }
 
-        let asyncCommands = [];
-        let ctr = 0;
-        transformed.payload.forEach((samples, partitionName) => {
-            asyncCommands.push((async () => {
-                const redisClient = await this._partitionRedisConnectionResolver(partitionName, true);
-                const scoredSamples = Array.from(samples, kvp => kvp.reverse()).flatMap(kvp => kvp);
-                const serverTime = await redisClient.time();
-                ctr++;
-                return await redisClient.pipeline()
-                    .zadd(this._assembleRedisKey(partitionName), ...scoredSamples)//Main partition
-                    .zadd(this._assembleRedisKey(this._settings.ActivityKey), serverTime[0], partitionName)//Activity for partition
-                    .zincrby(this._assembleRedisKey(this._settings.SamplesPerPartitionKey), (scoredSamples.length / 2), partitionName)//Sample count for partition
-                    .incrby(this._assembleRedisKey(this._settings.InputRatePerf), (scoredSamples.length / 2))//Input rate for diagnostics.
-                    .exec();
-
-            })());
-        });
-
-        let results = await Promise.allSettled(asyncCommands);
-        log += " W.CO: " + ctr;
+        let results = await this._NDPart.write(transformed.payload);
+        //log += " W.CO: " + ctr;
         log += " W.R: " + (Date.now() - sDate);
         sDate = Date.now();
-        results.forEach(e => {
-            if (e.status !== "fulfilled") {
-                throw new Error("Failed to complete operation:" + e.reason);
-            }
-        });
+
+        if (results.failed.length > 0) {
+            throw new Error(`Failed to complete operation:${results.failed}`);
+        }
         log += " W.F: " + (Date.now() - sDate);
         sDate = Date.now();
         return log;
@@ -417,7 +404,7 @@ module.exports = class Timeseries {
 
     async _validateTransformWriteParameters(tagTimeMap, requestId) {
         let logPartitionCounter = 0, logTagIdCounter = 0, logSumPartiton = 0, logSumTag = 0;
-        const returnObject = { "error": null, payload: new Map() };
+        const returnObject = { "error": null, payload: [] };
         const errors = [];
         let sampleCounter = 0;
         try {
@@ -455,45 +442,9 @@ module.exports = class Timeseries {
                         return returnObject;
                     }
                     sampleTime = BigInt(sampleTime);
-                    const partitionStart = sampleTime - (sampleTime % this._settings.PartitionTimeWidth);
-                    const tagId = tagNameToIdMapping.get(tagName);
-                    sDate = Date.now();
-                    const partitionName = `${await this._tagPartitionResolver(tagName, true)}${this._settings.Seperator}${partitionStart}`;//
-                    logSumPartiton += (Date.now() - sDate);
-                    logPartitionCounter++;
-                    if (partitionName === this._settings.ActivityKey) {
-                        returnObject.error = `Conflicting partition name with Reserved Key for "Activity" (${partitionName}).`;
-                        return returnObject;
-                    }
-                    if (partitionName === this._settings.SamplesPerPartitionKey) {
-                        returnObject.error = `Conflicting partition name with Reserved Key for "SamplesPerPartitionKey" (${partitionName}).`;
-                        return returnObject;
-                    }
-                    if (partitionName === this._settings.PurgePendingKey) {
-                        returnObject.error = `Conflicting partition name with Reserved Key for "PurgePendingKey" (${partitionName}).`;
-                        return returnObject;
-                    }
-                    if (partitionName === this._settings.InputRatePerf) {
-                        returnObject.error = `Conflicting partition name with Reserved Key for "InputRatePerf" (${partitionName}).`;
-                        return returnObject;
-                    }
-                    if (partitionName === this._settings.OutputRatePerf) {
-                        returnObject.error = `Conflicting partition name with Reserved Key for "OutputRatePerf" (${partitionName}).`;
-                        return returnObject;
-                    }
-                    if (partitionName === this._settings.InputRateTime) {
-                        returnObject.error = `Conflicting partition name with Reserved Key for "InputRateTime" (${partitionName}).`;
-                        return returnObject;
-                    }
-                    if (partitionName === this._settings.OutputRateTime) {
-                        returnObject.error = `Conflicting partition name with Reserved Key for "OutputRateTime" (${partitionName}).`;
-                        return returnObject;
-                    }
+                    const tagId = BigInt(tagNameToIdMapping.get(tagName));
                     const serializedSample = JSON.stringify({ 'p': sample, 'r': requestId.toString(), 'c': sampleCounter });
-                    const sampleScore = this._computeTagSpaceStart(tagId) + (sampleTime - partitionStart);
-                    const scoreTable = returnObject.payload.get(partitionName) || new Map();
-                    scoreTable.set(serializedSample, sampleScore);
-                    returnObject.payload.set(partitionName, scoreTable);
+                    returnObject.payload.push({ payload: serializedSample, dimensions: [sampleTime, tagId] });
                     sampleCounter++;
                 };
             }

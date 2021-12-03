@@ -18,6 +18,7 @@
     "express": "^4.17.1",
     "ioredis": "^4.27.9",
     "pg-promise": "^10.11.0",
+    "purgeable-sorted-set-family": "^0.0.2",
     "redis-scripto2": "^0.2.2"
   }
 }
