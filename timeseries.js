@@ -1,4 +1,5 @@
 const Crypto = require("crypto");
+const e = require("express");
 const path = require("path");
 const pssfns = require("purgeable-sorted-set-family");
 
@@ -111,6 +112,7 @@ module.exports = class Timeseries {
         this._computeTagSpaceStart = this._computeTagSpaceStart.bind(this);
         this._validateTransformReadParameters = this._validateTransformReadParameters.bind(this);
         this._validateTransformWriteParameters = this._validateTransformWriteParameters.bind(this);
+        this._sortAndSequence = this._sortAndSequence.bind(this);
     }
 
     async write(tagTimeMap, requestId = Date.now()) {
@@ -144,26 +146,40 @@ module.exports = class Timeseries {
         if (transformed.error !== null) {
             return Promise.reject(transformed.error);
         }
-
-        let asyncCommands = [];
-        const keys = Array.from(transformed.ranges.keys());
-        for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
-            const partitionName = keys[keyIndex];
-            const ranges = transformed.ranges.get(partitionName);
-            const redisClient = await this._partitionRedisConnectionResolver(partitionName, false);
-            if (!(redisClient == null)) //Null can occur when partition is not created yet or has been dropped.
-            {
-                const purgedPartitionName = `${partitionName}${this._settings.Seperator}${this._settings.PurgeMarker}`;
-                asyncCommands = asyncCommands.concat(ranges.map(async range => {
-                    const multiResponse = await redisClient.pipeline()
-                        .zrangebyscore(this._assembleRedisKey(purgedPartitionName), range.start, range.end, WITHSCORES) //Purging partition Query
-                        .zrangebyscore(this._assembleRedisKey(partitionName), range.start, range.end, WITHSCORES) //Active partition Query
-                        .exec();
-                    range.response = multiResponse.reduce((accum, e) => accum[1].concat(e[1]));//Sequence matters cause of time sorted keys.
-                    return range;
-                }));
-            }
-        };
+        const asyncCommands = transformed.queries.reduce((promiseHandles, q) => {
+            promiseHandles.push((async () => {
+                const tagIdToNameMap = q.tags;
+                const data = await this._NDPart.rangeRead(q.start, q.end);
+                if (data.error != undefined) {
+                    throw data.error;
+                }
+                else {
+                    return data.data.reduce((tagTimeMap, p) => {
+                        const tagName = tagIdToNameMap.get(p.dimensions[1]) || "ImpossibleTagName";
+                        const timeMap = tagTimeMap.get(tagName) || new Map();
+                        const packet = JSON.parse(p.payload);
+                        const existingPacket = timeMap.get(p.dimensions[0]);
+                        if (existingPacket == null || existingPacket.r < packet.r) {
+                            timeMap.set(p.dimensions[0], packet);
+                        }
+                        else if (existingPacket.r > packet.r) {
+                            timeMap.set(p.dimensions[0], existingPacket);
+                        }
+                        else {
+                            if (existingPacket.c > packet.c) {
+                                timeMap.set(p.dimensions[0], existingPacket);
+                            }
+                            else {
+                                timeMap.set(p.dimensions[0], packet);
+                            }
+                        }
+                        tagTimeMap.set(tagName, timeMap);
+                        return tagTimeMap;
+                    }, new Map());
+                }
+            })());
+            return promiseHandles;
+        }, []);
 
         let results = await Promise.allSettled(asyncCommands);
         let returnData = new Map();
@@ -171,25 +187,16 @@ module.exports = class Timeseries {
             if (e.status !== "fulfilled") {
                 throw new Error("Failed to complete operation:" + e.reason);
             } else {
-                this._parsePartitionData(e.value.response, e.value.timeOffset, (tagId) => {
-                    if (e.value.tagId !== tagId) {
-                        throw new Error(`Parsing Failed! Tagids donot match ${e.value.tagName} (${e.value.tagId}) <> (${tagId}).`);
-                    }
-                    return returnData.get(e.value.tagName) || new Map();
-                }, (tagId, timeMap) => {
-                    if (e.value.tagId !== tagId) {
-                        throw new Error(`Parsing Failed! Tagids donot match ${e.value.tagName} (${e.value.tagId}) <> (${tagId}).`);
-                    }
-                    return returnData.set(e.value.tagName, timeMap);
+                //Asumption the range will always have one tag once
+                e.value.forEach((timeMap, tagName) => {
+                    let payLoadTimeMap = new Map();
+                    timeMap.forEach((payload, time) => payLoadTimeMap.set(time, payload.p));
+                    returnData.set(tagName, payLoadTimeMap);
+                    return returnData;
                 });
             }
         });
-        returnData.forEach((timeMap, tagName) => {
-            timeMap.forEach((payload, time) => {
-                timeMap.set(time, payload.p);
-            });
-            returnData.set(tagName, timeMap);
-        });
+
         return returnData;
     }
 
@@ -330,64 +337,55 @@ module.exports = class Timeseries {
         const errors = [];
         const keys = Array.from(tagRanges.keys());
         const tagNameToIdMapping = await this._tagsNumericIdentityResolver(keys, false);
-        for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
-            const tagName = keys[keyIndex];
-            const range = tagRanges.get(tagName);
-            let start, end;
-            try {
-                start = BigInt(range.start);
-                start = start - (start % this._settings.PartitionTimeWidth);
-            }
-            catch (error) {
-                errors.push(`Invalid start range for ${tagName}: ${error.message}`);
-                continue;
-            };
-            try {
-                end = BigInt(range.end);
-            }
-            catch (error) {
-                errors.push(`Invalid end range for ${tagName}: ${error.message}`);
-                continue;
-            };
-            if (tagName.length > this._settings.MaximumTagNameLength) {
-                errors.push(`Tag "${tagName}" has name which extends character limit(${this._settings.MaximumTagNameLength}).`);
-                continue;
-            }
-            if (range.end < range.start) {
-                errors.push(`Invalid range; start should be smaller than end for ${tagName}.`);
-                continue;
-            }
-            const tagId = tagNameToIdMapping.get(tagName);
-            if (Number.isNaN(tagId)) {
-                errors.push(`Tag(${tagName}) doesnot exists.`);
-                continue;
-            }
-            const tagOffset = this._computeTagSpaceStart(tagId);
-            while (start < end) {
-                const pName = await this._tagPartitionResolver(tagName, false);
-                if (pName == null) {
-                    //We are trying to fetch a partition still not created.
-                    continue;
+        const sequencedTagNameToIdMapping = this._sortAndSequence(Array.from(tagNameToIdMapping.entries()), (a, b) => parseInt((a[1] - b[1]).toString()), (a, b) => !Number.isNaN(a) && b[1] - a[1] === 1);
+        returnObject.queries = sequencedTagNameToIdMapping.reduce((acc, sequencedChunk) => {
+            return acc.concat(sequencedChunk.reduce((queries, tagNameToId) => {
+                const tagName = tagNameToId[0];
+                const tagId = tagNameToId[1];
+                const range = tagRanges.get(tagName);
+                if (Number.isNaN(tagId)) {
+                    errors.push(`Tag(${tagName}) doesnot exists.`);
+                    return queries;
                 }
-                const partitionName = `${pName}${this._settings.Seperator}${start}`;
-                let readFrom = this._maximum(start, BigInt(range.start));
-                let readTill = this._minimum((start + (this._settings.PartitionTimeWidth - 1n)), end)
-                readFrom = readFrom === 0n ? readFrom : readFrom - start;
-                readTill = readTill === 0n ? readTill : readTill - start;
-                readFrom += tagOffset;
-                readTill += tagOffset;
-                const ranges = returnObject.ranges.get(partitionName) || [];
-                ranges.push({ "start": readFrom, "end": readTill, "tagName": tagName, "tagId": tagId, "timeOffset": start });
-                returnObject.ranges.set(partitionName, ranges);
-                start += this._settings.PartitionTimeWidth;
-                if (returnObject.ranges.size > this._settings.MaximumPartitionsScansInOneRead) {
-                    errors.push(`Please reduce tags or time range for query; Max allowed partition scans ${this._settings.MaximumPartitionsScansInOneRead} & currently its ${returnObject.ranges.size}.`);
-                    break;
+                try {
+                    range.start = BigInt(range.start);
                 }
-            }
-        };
+                catch (error) {
+                    errors.push(`Invalid start range for ${tagName}: ${error.message}`);
+                    return queries;
+                };
+                try {
+                    range.end = BigInt(range.end);
+                }
+                catch (error) {
+                    errors.push(`Invalid end range for ${tagName}: ${error.message}`);
+                    return queries;
+                };
+                if (tagName.length > this._settings.MaximumTagNameLength) {
+                    errors.push(`Tag "${tagName}" has name which extends character limit(${this._settings.MaximumTagNameLength}).`);
+                    return queries;
+                }
+                if (range.end < range.start) {
+                    errors.push(`Invalid range; start should be smaller than end for ${tagName}.`);
+                    return queries;
+                }
 
-        if (returnObject.ranges.size === 0 && errors.length == 0) {
+                if (queries.length > 0 && queries[queries.length - 1].range.start === range.start && queries[queries.length - 1].range.end === range.end) {
+                    queries[queries.length - 1].end = [range.end, tagId];
+                    queries[queries.length - 1].tags.set(tagId, tagName);
+                }
+                else {
+                    const query = { tags: new Map() };
+                    query.tags.set(tagId, tagName);
+                    query.range = range;
+                    query.start = [range.start, tagId];
+                    query.end = [range.end, tagId];
+                    queries.push(query);
+                }
+                return queries;
+            }, []));
+        }, []);
+        if (returnObject.queries.length === 0 && errors.length == 0) {
             returnObject.error = `Parameter 'partitionRanges' should contain atleast one range for query.`;
             return returnObject;
         }
@@ -511,5 +509,25 @@ module.exports = class Timeseries {
 
     _minimum(lhs, rhs) {
         return lhs < rhs ? lhs : rhs;
+    }
+
+    _sortAndSequence(numbers, sortFunction = (a, b) => a - b, sequenceFunction = (a, b) => b - a === 1) {
+        const sortedNumbers = numbers.sort(sortFunction);
+        return sortedNumbers.reduce((acc, e) => {
+            if (acc.length === 0) {
+                acc.push([e]);
+            }
+            else {
+                const lastActiveSequence = acc[acc.length - 1];
+                const lastSequnceNumber = lastActiveSequence[lastActiveSequence.length - 1];
+                if (sequenceFunction(lastSequnceNumber, e) === true) {
+                    acc[acc.length - 1].push(e);
+                }
+                else {
+                    acc.push([e]);
+                }
+            }
+            return acc;
+        }, []);
     }
 }
