@@ -7,7 +7,7 @@
     "mocha": " nyc --reporter=html --reporter=text mocha",
     "test": "npm run redisstart && npm run mocha",
     "perf-build": "docker-compose -f perf/docker-compose.yml build",
-    "perf": "docker-compose -f perf/docker-compose.yml up",
+    "perf": "docker-compose -f perf/docker-compose.yml up --remove-orphans",
     "perfaws": "docker --context aws-cloud compose -f perf/docker-compose-aws.yml up && docker --context aws-cloud compose -f perf/docker-compose-aws.yml logs --follow",
     "jmeter": "run-script-os",
     "redisstop": "docker stop streamz",
@@ -41,7 +41,7 @@
   },
   "homepage": "https://github.com/LRagji/redis-lsm-timeseries#readme",
   "dependencies": {
-    "purgeable-sorted-set-family": "^0.0.2",
+    "purgeable-sorted-set-family": "^0.0.4",
     "redis-scripto": "0.1.3",
     "redis-scripto2": "^0.2.2",
     "shortid": "^2.2.16"
