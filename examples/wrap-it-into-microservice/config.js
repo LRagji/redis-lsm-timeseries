@@ -25,6 +25,7 @@ function getInmemoryKey(lastName, firstName) {
 }
 
 async function hash(tagNames, createIfNotFound = true, name = "Tags") {
+    const perfLogTime = Date.now();
     let returnMap = new Map();
     const redisQueryTagNames = [];
     tagNames.forEach((tagName) => {
@@ -59,6 +60,9 @@ async function hash(tagNames, createIfNotFound = true, name = "Tags") {
             }
             returnMap.set(item, identity);
         });
+    }
+    if ((Date.now() - perfLogTime) > 3000) {
+        console.log(`Slow Log(>3s): ${Date.now() - perfLogTime} ${name} Asked:${tagNames.length} InMemory:${tagNames.length - redisQueryTagNames.length} InRedis: ${redisQueryTagNames.length} ${((tagNames.length - redisQueryTagNames.length) / tagNames.length) * 100}%`)
     }
     return returnMap;
 }

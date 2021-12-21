@@ -141,6 +141,7 @@ module.exports = class Timeseries {
     }
 
     async read(tagRanges) {
+        return new Map();
         const transformed = await this._validateTransformReadParameters(tagRanges);
 
         if (transformed.error !== null) {

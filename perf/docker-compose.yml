@@ -221,12 +221,12 @@ services:
       - "-o /app/results"
       - "-JTARGET_HOST=loadbalancer"
       - "-JTARGET_PORT=3000"
-  # redisinsight:
-  #   image: redislabs/redisinsight:latest
-  #   ports:
-  #     - '8001:8001'
-  #   volumes:
-  #     - ./redis-insight/:/db
+  redisinsight:
+    image: redislabs/redisinsight:latest
+    ports:
+      - '8001:8001'
+    volumes:
+      - ./redis-insight/:/db
   # cold-shard1:
   #   image: postgres:11.4
   #   restart: always
