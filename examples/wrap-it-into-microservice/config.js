@@ -24,7 +24,7 @@ function getInmemoryKey(lastName, firstName) {
     return `${lastName}${firstName}`;
 }
 
-async function hash(tagNames, createIfNotFound = true, name = "Tags") {
+async function hash(tagNames, createIfNotFound = true, name = "Tags", log = false) {
     const perfLogTime = Date.now();
     let returnMap = new Map();
     const redisQueryTagNames = [];
@@ -61,8 +61,10 @@ async function hash(tagNames, createIfNotFound = true, name = "Tags") {
             returnMap.set(item, identity);
         });
     }
-    if ((Date.now() - perfLogTime) > 3000) {
-        console.log(`Slow Log(>3s): ${Date.now() - perfLogTime} ${name} Asked:${tagNames.length} InMemory:${tagNames.length - redisQueryTagNames.length} InRedis: ${redisQueryTagNames.length} ${((tagNames.length - redisQueryTagNames.length) / tagNames.length) * 100}%`)
+    const elapsed = Date.now() - perfLogTime;
+    const threshold = 700;
+    if (elapsed > threshold) {
+        console.log(`SlowLog-${(((elapsed - threshold) / threshold) * 100).toFixed(0)}%-[${elapsed}]: ${name} Asked:${tagNames.length} InMemory:${tagNames.length - redisQueryTagNames.length} InRedis:${redisQueryTagNames.length} Hit Ratio:${((tagNames.length - redisQueryTagNames.length) / tagNames.length) * 100}%`)
     }
     return returnMap;
 }
@@ -127,7 +129,7 @@ const coordinators = Array.from({ length: (clientsPerShard * 2) }, _ => {
     return scriptManager;
 })
 stores = hotStores.map((h, idx) => ({ "hot": h, "cold": coldStores[idx] }));
-const shards = stores.map(storeInfo => ({ "hot": Array.from({ length: clientsPerShard }, _ => new redisType(storeInfo.hot)), "cold": storeInfo.cold }));
+const shards = stores.map(storeInfo => ({ "hot": Array.from({ length: clientsPerShard }, _ => storeInfo.hot), "cold": storeInfo.cold }));
 // setInterval(() => {
 //     console.log("Internal Cache Size: " + identityCache.size);
 // }, 1000 * 60)

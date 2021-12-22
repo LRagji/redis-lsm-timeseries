@@ -1,5 +1,5 @@
 const Crypto = require("crypto");
-const e = require("express");
+const redisType = require("ioredis");
 const path = require("path");
 const pssfns = require("purgeable-sorted-set-family");
 
@@ -8,6 +8,74 @@ const WITHSCORES = "WITHSCORES";
 const LUA_SCRIPT_DIR_NAME = "lua-scripts";
 const PURGE_ACQUIRE_SCRIPT_NAME = "purge-acquire";
 const PURGE_RELEASE_SCRIPT_NAME = "purge-release";
+
+class RedisClient {
+    redisClient
+    filenameToCommand = new Map();
+
+    constructor(redisConnectionString) {
+        this.redisClient = new redisType(redisConnectionString);
+    }
+
+    async shutdown() {
+        await this.redisClient.quit();
+        this.redisClient.disconnect();
+    }
+
+    async acquire(token) {
+        //console.time(token);
+    }
+
+    async release(token) {
+        //console.timeEnd(token);
+    }
+
+    async run(commandArgs) {
+        //console.log(commandArgs);
+        const v = await this.redisClient.send_command(commandArgs.shift(), ...commandArgs);
+        //console.log(v);
+        return v;
+    }
+
+    async pipeline(commands) {
+        // console.log(commands);
+        const result = await this.redisClient.multi(commands)
+            .exec();
+        const finalResult = result.map(r => {
+            let err = r.shift();
+            if (err != null) {
+                throw err;
+            }
+            return r[0];
+        });
+        // console.log(finalResult);
+        return finalResult;
+    }
+
+    async script(filename, keys, args) {
+        let command = this.filenameToCommand.get(filename);
+        if (command == null) {
+            const contents = await new Promise < string > ((acc, rej) => {
+                fs.readFile(filename, "utf8", (err, data) => {
+                    if (err !== null) {
+                        rej(err);
+                    };
+                    acc(data);
+                });
+            });
+            command = Crypto.createHash("sha256").update(contents, "binary").digest("hex")
+            this.redisClient.defineCommand(command, { lua: contents });
+            this.filenameToCommand.set(filename, command);
+        }
+        // console.log(keys);
+        // console.log(args);
+        //console.log(filename);
+        // @ts-ignore
+        const results = await this.redisClient[command](keys.length, keys, args);
+        //console.log(results);
+        return results;
+    }
+}
 
 module.exports = class Timeseries {
 
@@ -55,16 +123,23 @@ module.exports = class Timeseries {
         catch (err) {
             throw new Error("Parameter 'settings.PartitionTimeWidth' is invalid: " + err.message);
         }
+        this._shard = {};
+        this._NDPart = {};
+        partitionRedisConnectionResolver("Laukik", true)
+            .then((conString) => {
+                const redisClient = new RedisClient(conString);
+                this._shard = new pssfns.RemotePSSF(async (ops) => redisClient);
+                this._NDPart = new pssfns.NDimensionalPartitionedSortedSet([100n, 100n], _ => this._shard);
+                console.log("System Active");
+            });
 
-        this._shard = new pssfns.LocalPSSF();
-        this._NDPart = new pssfns.NDimensionalPartitionedSortedSet([100n, 100n], _ => this._shard);
 
         this._tagPartitionResolver = tagPartitionResolver;
         this._partitionRedisConnectionResolver = partitionRedisConnectionResolver;
-        this._tagsNumericIdentityResolver = async (tagNames, createIdentity) => {
+        this._tagsNumericIdentityResolver = async (tagNames, createIdentity, log) => {
             const redisMaximumScore = 9007199254740992n// Maximum score:https://redis.io/commands/ZADD
             const maxLimit = (redisMaximumScore / settings.PartitionTimeWidth);
-            const tagIds = await tagsNumericIdentityResolver(tagNames, createIdentity);
+            const tagIds = await tagsNumericIdentityResolver(tagNames, createIdentity, undefined, log);
             let validatingArray = Array.from(tagNames);
             tagIds.forEach((tagId, tagName) => {
                 if (!(Number.isNaN(tagId))) {
@@ -126,7 +201,6 @@ module.exports = class Timeseries {
         if (transformed.error !== null) {
             return Promise.reject(transformed.error);
         }
-
         let results = await this._NDPart.write(transformed.payload);
         //log += " W.CO: " + ctr;
         log += " W.R: " + (Date.now() - sDate);
@@ -337,7 +411,7 @@ module.exports = class Timeseries {
 
         const errors = [];
         const keys = Array.from(tagRanges.keys());
-        const tagNameToIdMapping = await this._tagsNumericIdentityResolver(keys, false);
+        const tagNameToIdMapping = await this._tagsNumericIdentityResolver(keys, false, true);
         const sequencedTagNameToIdMapping = this._sortAndSequence(Array.from(tagNameToIdMapping.entries()), (a, b) => parseInt((a[1] - b[1]).toString()), (a, b) => !Number.isNaN(a) && b[1] - a[1] === 1);
         returnObject.queries = sequencedTagNameToIdMapping.reduce((acc, sequencedChunk) => {
             return acc.concat(sequencedChunk.reduce((queries, tagNameToId) => {
@@ -417,7 +491,7 @@ module.exports = class Timeseries {
         }
         const tagKeys = Array.from(tagTimeMap.keys());
         let sDate = Date.now();
-        const tagNameToIdMapping = await this._tagsNumericIdentityResolver(tagKeys, true);
+        const tagNameToIdMapping = await this._tagsNumericIdentityResolver(tagKeys, true, true);
         logSumTag += (Date.now() - sDate);
         logTagIdCounter++;
         for (let tagKeyIndex = 0; tagKeyIndex < tagKeys.length; tagKeyIndex++) {
