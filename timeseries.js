@@ -2,6 +2,7 @@ const Crypto = require("crypto");
 const redisType = require("ioredis");
 const path = require("path");
 const pssfns = require("purgeable-sorted-set-family");
+const fs = require('fs')
 
 //Domain constants
 const WITHSCORES = "WITHSCORES";
@@ -55,7 +56,7 @@ class RedisClient {
     async script(filename, keys, args) {
         let command = this.filenameToCommand.get(filename);
         if (command == null) {
-            const contents = await new Promise < string > ((acc, rej) => {
+            const contents = await new Promise((acc, rej) => {
                 fs.readFile(filename, "utf8", (err, data) => {
                     if (err !== null) {
                         rej(err);
@@ -275,27 +276,24 @@ module.exports = class Timeseries {
         return returnData;
     }
 
-    async purgeAcquire(scriptoServer, timeThreshold, countThreshold, reAcquireTimeout, partitionsToAcquire = 10) {
+    async purgeAcquire(timeThreshold, countThreshold, reAcquireTimeout, partitionsToAcquire = 10, tagIdToNameResolver = (tagIds) => Promise.resolve(tagIds.reduce((map, e) => { map.set(e, e); return map; }, new Map()))) {
 
-        if (scriptoServer == null) {
-            return Promise.reject("Parameter 'scriptoServer' is invalid: Should be an instance of redis-scripto.");
-        }
         try {
-            timeThreshold = BigInt(timeThreshold);
+            timeThreshold = parseInt(timeThreshold);
         }
         catch (err) {
             return Promise.reject("Parameter 'timeThreshold' is invalid: " + err.message);
         }
 
         try {
-            countThreshold = BigInt(countThreshold);
+            countThreshold = parseInt(countThreshold);
         }
         catch (err) {
             return Promise.reject("Parameter 'countThreshold' is invalid: " + err.message);
         }
 
         try {
-            reAcquireTimeout = BigInt(reAcquireTimeout);
+            reAcquireTimeout = parseInt(reAcquireTimeout);
         }
         catch (err) {
             return Promise.reject("Parameter 'reAcquireTimeout' is invalid: " + err.message);
@@ -308,48 +306,85 @@ module.exports = class Timeseries {
         if (countThreshold <= 0 && reAcquireTimeout <= 0 && timeThreshold <= 0) {
             throw new Error("Parameter 'countThreshold' 'reAcquireTimeout' 'timeThreshold' cannot be less then or equal to zero.");
         }
-        scriptoServer.loadFromDir(path.join(__dirname, LUA_SCRIPT_DIR_NAME));
+        // scriptoServer.loadFromDir(path.join(__dirname, LUA_SCRIPT_DIR_NAME));
 
-        const keys = [
-            this._assembleRedisKey(this._settings.ActivityKey),
-            this._assembleRedisKey(this._settings.SamplesPerPartitionKey),
-            this._assembleRedisKey(this._settings.PurgePendingKey)
-        ];
-        const args = [
-            partitionsToAcquire,
-            timeThreshold,
-            countThreshold,
-            reAcquireTimeout,
-            this.instanceHash,
-            this._settings.Seperator,
-            this._settings.PurgeMarker
-        ];
-        const acquiredData = await new Promise((acc, rej) => {
-            scriptoServer.run(PURGE_ACQUIRE_SCRIPT_NAME, keys, args, (err, result) => {
-                if (err !== null) {
-                    return rej(err);
+        // const keys = [
+        //     this._assembleRedisKey(this._settings.ActivityKey),
+        //     this._assembleRedisKey(this._settings.SamplesPerPartitionKey),
+        //     this._assembleRedisKey(this._settings.PurgePendingKey)
+        // ];
+        // const args = [
+        //     partitionsToAcquire,
+        //     timeThreshold,
+        //     countThreshold,
+        //     reAcquireTimeout,
+        //     this.instanceHash,
+        //     this._settings.Seperator,
+        //     this._settings.PurgeMarker
+        // ];
+        // const acquiredData = await new Promise((acc, rej) => {
+        //     scriptoServer.run(PURGE_ACQUIRE_SCRIPT_NAME, keys, args, (err, result) => {
+        //         if (err !== null) {
+        //             return rej(err);
+        //         }
+        //         acc(result);
+        //     });
+        // });
+
+        // return acquiredData.map(serializedData => {
+        //     const acquiredPartitionInfo = {};
+        //     const partitionInfo = this._extractPartitionInfo(serializedData[0]);
+        //     acquiredPartitionInfo.releaseToken = serializedData[0];
+        //     acquiredPartitionInfo.name = partitionInfo.partition;
+        //     acquiredPartitionInfo.start = partitionInfo.start;
+        //     acquiredPartitionInfo.data = new Map();
+        //     this._parsePartitionData(serializedData[1], partitionInfo.start, tagId => acquiredPartitionInfo.data.get(tagId) || new Map(), acquiredPartitionInfo.data.set.bind(acquiredPartitionInfo.data));
+        //     acquiredPartitionInfo.data.forEach((timeMap, tagName) => {
+        //         timeMap.forEach((payload, time) => {
+        //             timeMap.set(time, payload.p);
+        //         });
+        //         acquiredPartitionInfo.data.set(tagName, timeMap);
+        //     })
+        //     return acquiredPartitionInfo;
+        // });
+        const returnData = [];
+        const tokenizedData = await this._shard.purgeBegin(timeThreshold, countThreshold, null, reAcquireTimeout, partitionsToAcquire);
+        if (tokenizedData.error != undefined) {
+            throw tokenizedData.error;
+        }
+        const transFormedData = this._NDPart.parseTokenizedDimentionalData(tokenizedData.data);
+        const tagIds = Array.from(
+            Array.from(transFormedData.values())
+                .map(e => e[1])
+                .reduce((s, e) => { s.add(e); return s; }, new Set()));
+        const tagIdToNameMapping = await tagIdToNameResolver(tagIds);// Need a tag reverse id map lookup
+        transFormedData.forEach((dData, token) => {
+            const payload = { releaseToken: token, data: new Map() };
+            dData.forEach((data) => {
+                const tagId = data.dimensions[1];
+                const time = data.dimensions[0];
+                const currentPayload = JSON.parse(data.payload);//Possible to blow up for bigint
+                const tagName = tagIdToNameMapping.get(tagId);
+                const timeMap = payload.data.get(tagName) || new Map();
+                let existingPayload = timeMap.get(time);
+                if (existingPayload == null ||
+                    existingPayload.r < currentPayload.r ||
+                    (existingPayload.r === currentPayload.r && exisitingData.c < currentPayload.c)) {
+                    existingPayload = currentPayload;
                 }
-                acc(result);
+                timeMap.set(time, existingPayload);
+                payload.data.set(tagName, timeMap);
             });
-        });
-
-        return acquiredData.map(serializedData => {
-            const acquiredPartitionInfo = {};
-            const partitionInfo = this._extractPartitionInfo(serializedData[0]);
-            acquiredPartitionInfo.releaseToken = serializedData[0];
-            acquiredPartitionInfo.name = partitionInfo.partition;
-            acquiredPartitionInfo.start = partitionInfo.start;
-            acquiredPartitionInfo.data = new Map();
-            this._parsePartitionData(serializedData[1], partitionInfo.start, tagId => acquiredPartitionInfo.data.get(tagId) || new Map(), acquiredPartitionInfo.data.set.bind(acquiredPartitionInfo.data));
-            acquiredPartitionInfo.data.forEach((timeMap, tagName) => {
+            payload.data.forEach((timeMap, tagName) => {
                 timeMap.forEach((payload, time) => {
                     timeMap.set(time, payload.p);
                 });
-                acquiredPartitionInfo.data.set(tagName, timeMap);
-            })
-            return acquiredPartitionInfo;
+            });
+            returnData.push(payload);
         });
+        return returnData;
     }
+
 
     async purgeRelease(scriptoServer, releaseToken) {
 
