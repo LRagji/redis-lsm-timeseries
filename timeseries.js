@@ -306,47 +306,7 @@ module.exports = class Timeseries {
         if (countThreshold <= 0 && reAcquireTimeout <= 0 && timeThreshold <= 0) {
             throw new Error("Parameter 'countThreshold' 'reAcquireTimeout' 'timeThreshold' cannot be less then or equal to zero.");
         }
-        // scriptoServer.loadFromDir(path.join(__dirname, LUA_SCRIPT_DIR_NAME));
 
-        // const keys = [
-        //     this._assembleRedisKey(this._settings.ActivityKey),
-        //     this._assembleRedisKey(this._settings.SamplesPerPartitionKey),
-        //     this._assembleRedisKey(this._settings.PurgePendingKey)
-        // ];
-        // const args = [
-        //     partitionsToAcquire,
-        //     timeThreshold,
-        //     countThreshold,
-        //     reAcquireTimeout,
-        //     this.instanceHash,
-        //     this._settings.Seperator,
-        //     this._settings.PurgeMarker
-        // ];
-        // const acquiredData = await new Promise((acc, rej) => {
-        //     scriptoServer.run(PURGE_ACQUIRE_SCRIPT_NAME, keys, args, (err, result) => {
-        //         if (err !== null) {
-        //             return rej(err);
-        //         }
-        //         acc(result);
-        //     });
-        // });
-
-        // return acquiredData.map(serializedData => {
-        //     const acquiredPartitionInfo = {};
-        //     const partitionInfo = this._extractPartitionInfo(serializedData[0]);
-        //     acquiredPartitionInfo.releaseToken = serializedData[0];
-        //     acquiredPartitionInfo.name = partitionInfo.partition;
-        //     acquiredPartitionInfo.start = partitionInfo.start;
-        //     acquiredPartitionInfo.data = new Map();
-        //     this._parsePartitionData(serializedData[1], partitionInfo.start, tagId => acquiredPartitionInfo.data.get(tagId) || new Map(), acquiredPartitionInfo.data.set.bind(acquiredPartitionInfo.data));
-        //     acquiredPartitionInfo.data.forEach((timeMap, tagName) => {
-        //         timeMap.forEach((payload, time) => {
-        //             timeMap.set(time, payload.p);
-        //         });
-        //         acquiredPartitionInfo.data.set(tagName, timeMap);
-        //     })
-        //     return acquiredPartitionInfo;
-        // });
         const returnData = [];
         const tokenizedData = await this._shard.purgeBegin(timeThreshold, countThreshold, null, reAcquireTimeout, partitionsToAcquire);
         if (tokenizedData.error != undefined) {
@@ -369,7 +329,7 @@ module.exports = class Timeseries {
                 let existingPayload = timeMap.get(time);
                 if (existingPayload == null ||
                     existingPayload.r < currentPayload.r ||
-                    (existingPayload.r === currentPayload.r && exisitingData.c < currentPayload.c)) {
+                    (existingPayload.r === currentPayload.r && existingPayload.c < currentPayload.c)) {
                     existingPayload = currentPayload;
                 }
                 timeMap.set(time, existingPayload);
@@ -386,30 +346,23 @@ module.exports = class Timeseries {
     }
 
 
-    async purgeRelease(scriptoServer, releaseToken) {
-
-        if (scriptoServer == null) {
-            return Promise.reject("Parameter 'scriptoServer' is invalid: Should be an instance of redis-scripto.");
-        }
+    async purgeRelease(releaseToken) {
 
         if (releaseToken == undefined || releaseToken === "") {
             return Promise.reject("Invalid parameter 'releaseToken'.");
         }
-        const keys = [
-            this._assembleRedisKey(this._settings.PurgePendingKey),
-            this._assembleRedisKey(`${releaseToken}${this._settings.Seperator}${this._settings.PurgeMarker}`),
-            this._assembleRedisKey(this._settings.OutputRatePerf),
-        ];
-        const args = [releaseToken];
-        const response = await new Promise((acc, rej) => {
-            scriptoServer.run(PURGE_RELEASE_SCRIPT_NAME, keys, args, (err, result) => {
-                if (err !== null) {
-                    return rej(err);
-                }
-                acc(result);
-            });
-        });
-        return response === 1;
+
+        const tokens = [releaseToken];
+        const released = await this._shard.purgeEnd(tokens);
+        const failedTokens = released.failed;
+        released.succeeded.reduce((ft, t) => {
+            if (tokens.indexOf(t) === -1) {
+                ft.push(t);
+            }
+            return ft;
+        }, failedTokens);
+
+        return failedTokens.length === 0;
     }
 
     async diagnostic(redisClient) {
