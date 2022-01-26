@@ -25,6 +25,7 @@ async function mainPurgeLoop(storeInfo) {
     const coolDownTime = 2000;
     const processInOneLoop = 5;
     const store = new timeseriesType(config.tagToPartitionMapping, config.partitionToRedisMapping, config.tagNameToTagId, config.settings);
+    await store.waitForInit();
     //const redisClient = new redisType(storeInfo.hot);
     //const scriptManager = new scripto(redisClient);
     //await fs.appendFile(path.join(__dirname, storeInfo.cold, "a.csv"), "TotalTime,Network,Compute,IO,Partitions,Samples,Rate,Input,Output,Delta");

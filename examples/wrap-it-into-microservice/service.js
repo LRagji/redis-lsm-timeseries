@@ -65,43 +65,47 @@ app.post('/get', (req, res) => {
         .catch(error => { console.log(error); res.status(500).json(JSON.stringify(error)); });
 });
 
-//Startup
-const consumerName = `C-${store.instanceHash}`;
-let workerName = null;
-if (config.mode === "PG") workerName = "pg-purge-worker.js";
-if (config.mode === "FILE") workerName = "file-purge-worker.js";
-if (workerName != null) {
-    console.log(`Running in ${workerName} purge mode.`);
-    const purgeWorkers = config.stores.map(storeInfo =>
-        new Promise((resolve, reject) => {
-            const worker = new Worker(path.join(__dirname, workerName), {
-                workerData: storeInfo
+store.waitForInit()
+    .then((initResult) => {
+        //Startup
+        const consumerName = `C-${store.instanceHash}`;
+        let workerName = null;
+        if (config.mode === "PG") workerName = "pg-purge-worker.js";
+        if (config.mode === "FILE") workerName = "file-purge-worker.js";
+        if (workerName != null) {
+            console.log(`Running in ${workerName} purge mode.`);
+            const purgeWorkers = config.stores.map(storeInfo =>
+                new Promise((resolve, reject) => {
+                    const worker = new Worker(path.join(__dirname, workerName), {
+                        workerData: storeInfo
+                    });
+                    worker.on('message', resolve);
+                    worker.on('error', reject);
+                    worker.on('exit', (code) => {
+                        if (code !== 0)
+                            reject(new Error(`Worker stopped with exit code ${code}`));
+                    });
+                }));
+            Promise.allSettled(purgeWorkers)
+                .then(r => console.log(`${consumerName} workers exited.`));
+        }
+        else {
+            console.log("Running in standalone mode, No data purge strategy specified.");
+        }
+        const server = app.listen(port, () => {
+            console.log(`${consumerName} listening at http://localhost:${port}`);
+        });
+        //Shutdown 
+        var signalsToAccept = {
+            'SIGHUP': 1,
+            'SIGINT': 2,
+            'SIGTERM': 15
+        };
+        Object.keys(signalsToAccept).forEach((signal) => {
+            process.on(signal, () => {
+                console.log(`Http Server received a ${signal} signal`);
+                server.close((err) => process.exit(0));//Stops accepting new connections existing connections will need to exit on themselves.
             });
-            worker.on('message', resolve);
-            worker.on('error', reject);
-            worker.on('exit', (code) => {
-                if (code !== 0)
-                    reject(new Error(`Worker stopped with exit code ${code}`));
-            });
-        }));
-    Promise.allSettled(purgeWorkers)
-        .then(r => console.log(`${consumerName} workers exited.`));
-}
-else {
-    console.log("Running in standalone mode, No data purge strategy specified.");
-}
-const server = app.listen(port, () => {
-    console.log(`${consumerName} listening at http://localhost:${port}`);
-});
+        });
 
-var signalsToAccept = {
-    'SIGHUP': 1,
-    'SIGINT': 2,
-    'SIGTERM': 15
-};
-Object.keys(signalsToAccept).forEach((signal) => {
-    process.on(signal, () => {
-        console.log(`Http Server received a ${signal} signal`);
-        server.close((err) => process.exit(0));//Stops accepting new connections existing connections will need to exit on themselves.
     });
-});

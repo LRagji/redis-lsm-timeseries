@@ -126,14 +126,16 @@ module.exports = class Timeseries {
         }
         this._shard = {};
         this._NDPart = {};
-        partitionRedisConnectionResolver("Laukik", true)
-            .then((conString) => {
-                const redisClient = new RedisClient(conString);
-                this._shard = new pssfns.RemotePSSF(async (ops) => redisClient);
-                this._NDPart = new pssfns.NDimensionalPartitionedSortedSet([100n, 100n], _ => this._shard);
-                console.log("System Active");
-            });
-
+        this._initPromise = new Promise((acc, rej) => {
+            partitionRedisConnectionResolver("Laukik", true)
+                .then((conString) => {
+                    const redisClient = new RedisClient(conString);
+                    this._shard = new pssfns.RemotePSSF(async (ops) => redisClient);
+                    this._NDPart = new pssfns.NDimensionalPartitionedSortedSet([100n, 100n], _ => this._shard);
+                    console.log("System Active");
+                    acc();
+                });
+        });
 
         this._tagPartitionResolver = tagPartitionResolver;
         this._partitionRedisConnectionResolver = partitionRedisConnectionResolver;
@@ -189,6 +191,11 @@ module.exports = class Timeseries {
         this._validateTransformReadParameters = this._validateTransformReadParameters.bind(this);
         this._validateTransformWriteParameters = this._validateTransformWriteParameters.bind(this);
         this._sortAndSequence = this._sortAndSequence.bind(this);
+        this.waitForInit = this.waitForInit.bind(this);
+    }
+
+    async waitForInit() {
+        await this._initPromise;
     }
 
     async write(tagTimeMap, requestId = Date.now()) {
@@ -275,7 +282,7 @@ module.exports = class Timeseries {
         return returnData;
     }
 
-    async purgeAcquire(timeThreshold, countThreshold, reAcquireTimeout, partitionsToAcquire = 10, tagIdToNameResolver = (tagIds) => Promise.resolve(tagIds.reduce((map, e) => { map.set(e, e); return map; }, new Map()))) {
+    async purgeAcquire(timeThreshold, countThreshold, reAcquireTimeout, partitionsToAcquire = 10, tagIdToNameResolver = (tagIds) => Promise.resolve(tagIds.reduce((map, id) => { map.set(id, id); return map; }, new Map()))) {
 
         try {
             timeThreshold = parseInt(timeThreshold);
@@ -310,11 +317,16 @@ module.exports = class Timeseries {
         const tokenizedData = await this._shard.purgeBegin(timeThreshold, countThreshold, null, reAcquireTimeout, partitionsToAcquire);
         if (tokenizedData.error != undefined) {
             throw tokenizedData.error;
+            return;
+        }
+        if (tokenizedData.data.size <= 0) {
+            return returnData;
         }
         const transFormedData = this._NDPart.parseTokenizedDimentionalData(tokenizedData.data);
         const tagIds = Array.from(
             Array.from(transFormedData.values())
-                .map(e => e[1])
+                .flat()
+                .map(e => e.dimensions[1])
                 .reduce((s, e) => { s.add(e); return s; }, new Set()));
         const tagIdToNameMapping = await tagIdToNameResolver(tagIds);// Need a tag reverse id map lookup
         transFormedData.forEach((dData, token) => {

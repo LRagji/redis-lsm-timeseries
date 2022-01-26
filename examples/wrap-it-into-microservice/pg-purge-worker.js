@@ -17,6 +17,7 @@ async function mainPurgeLoop(storeInfo) {
     const coolDownTime = 2000;
     const processInOneLoop = 100;
     const store = new timeseriesType(config.tagToPartitionMapping, config.partitionToRedisMapping, config.tagNameToTagId, config.settings);
+    await store.waitForInit();
     const scriptManager = new scripto(new redisType(storeInfo.hot));
     const db = pgp(storeInfo.cold);
     const columnDef = new pgp.helpers.ColumnSet(['id', 'start', 'blob'], { table: 'raw' });
