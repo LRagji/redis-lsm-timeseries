@@ -41,7 +41,7 @@ services:
       # - "hot-shard4"
       # - "hot-shard5"
     volumes:
-      - ./raw-db/:/usr/src/app/examples/wrap-it-into-microservice/raw-db/
+      - ../:/usr/src/app/
   # timeseries_2:
   #   build:
   #     context: ../
